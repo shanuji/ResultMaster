@@ -120,3 +120,6 @@ app.*.symbols
 # Local SQLite data
 *.sqlite3
 *.sqlite3-*
+resultmaster.sqlite3
+__pycache__/
+*.pyc
