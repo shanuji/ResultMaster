@@ -1,0 +1,19 @@
+# This file tracks properties of this Flutter project.
+version:
+  revision: ""
+  channel: "stable"
+
+project_type: app
+
+migration:
+  platforms:
+    - platform: root
+      create_revision: ""
+      base_revision: ""
+    - platform: android
+      create_revision: ""
+      base_revision: ""
+
+unmanaged_files:
+  - 'lib/main.dart'
+  - 'android/app/src/main/AndroidManifest.xml'
