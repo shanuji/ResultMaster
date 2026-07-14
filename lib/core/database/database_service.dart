@@ -1,47 +1,57 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
-import '../constants/app_constants.dart';
-
 class DatabaseService {
   DatabaseService._();
 
   static final DatabaseService instance = DatabaseService._();
+  static const _databaseName = 'result_master.db';
+  static const _databaseVersion = 1;
 
   Database? _database;
 
   Future<Database> get database async {
-    final existing = _database;
-    if (existing != null) return existing;
-
-    final databasePath = await getDatabasesPath();
-    final path = p.join(databasePath, AppConstants.databaseName);
-
-    _database = await openDatabase(
-      path,
-      version: AppConstants.databaseVersion,
-      onCreate: _createSchema,
-      onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
-    );
+    if (_database != null) return _database!;
+    _database = await _openDatabase();
     return _database!;
+  }
+
+  Future<Database> _openDatabase() async {
+    final databaseDirectory = await getDatabasesPath();
+    final databasePath = p.join(databaseDirectory, _databaseName);
+
+    return openDatabase(
+      databasePath,
+      version: _databaseVersion,
+      onCreate: _createSchema,
+      onUpgrade: _upgradeSchema,
+    );
   }
 
   Future<void> _createSchema(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE app_metadata (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
+      CREATE TABLE result_workbooks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        class_name TEXT NOT NULL,
+        academic_year TEXT NOT NULL,
+        created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
     ''');
 
     await db.execute('''
       CREATE TABLE subjects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
+        workbook_id TEXT NOT NULL,
         name TEXT NOT NULL,
-        sort_order INTEGER NOT NULL,
-        created_at TEXT NOT NULL
+        position INTEGER NOT NULL,
+        FOREIGN KEY (workbook_id) REFERENCES result_workbooks (id) ON DELETE CASCADE
       )
     ''');
+  }
+
+  Future<void> _upgradeSchema(Database db, int oldVersion, int newVersion) async {
+    // Future migrations will be added here as offline result features expand.
   }
 }

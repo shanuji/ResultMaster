@@ -2,7 +2,7 @@
     <application
         android:label="ResultMaster"
         android:name="${applicationName}"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@style/LaunchTheme">
         <activity
             android:name=".MainActivity"
@@ -17,5 +17,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <meta-data android:name="flutterEmbedding" android:value="2" />
     </application>
 </manifest>

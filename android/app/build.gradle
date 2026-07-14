@@ -1,20 +1,22 @@
 plugins {
-    id 'com.android.application'
-    id 'kotlin-android'
-    id 'dev.flutter.flutter-gradle-plugin'
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
 }
 
 android {
-    namespace 'com.resultmaster.app'
-    compileSdk 35
+    namespace = "com.example.result_master"
+    compileSdk = flutter.compileSdkVersion
 
     defaultConfig {
-        applicationId 'com.resultmaster.app'
-        minSdk 23
-        targetSdk 35
-        versionCode 1
-        versionName '0.1.0'
+        applicationId = "com.example.result_master"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 }
 
-flutter { source '../..' }
+flutter {
+    source = "../.."
+}
