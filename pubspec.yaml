@@ -1,0 +1,21 @@
+name: result_master
+description: Offline School Result Management App
+publish_to: 'none'
+version: 0.3.0+3
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  path: ^1.9.0
+  sqflite: ^2.3.3+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
