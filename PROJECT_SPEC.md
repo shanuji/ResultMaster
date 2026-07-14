@@ -1,28 +1,51 @@
-# ResultMaster Project Specification
+# Project Spec
 
-ResultMaster is an offline-first school result management application.
+ResultMaster is an offline-first school result management app. Data must be stored locally and workflows should follow Clean Architecture boundaries between presentation, domain, data, and infrastructure.
+# PROJECT SPEC
 
-## Product Principles
-- Keep all core workflows available without internet access.
-- Store durable app data locally in SQLite.
-- Keep business rules out of widgets and screens.
-- Prefer simple, fast interactions over decorative motion.
+## Result Workbook Configuration
 
-## Architecture
-Use Clean Architecture boundaries:
-- `domain`: entities, value objects, repository contracts, and validation rules.
-- `application`: use cases and orchestration.
-- `data`: SQLite-backed implementations, DTO mapping, and import/export adapters.
-- `presentation`: screens, controllers, widgets, and routing.
+Each subject must have these configurable properties:
 
-## UI Theme
-The app uses an Excel-inspired theme:
-- White and pale green surfaces.
-- Dark green primary headers.
-- Thin grey grid lines.
-- Spreadsheet-like tables with frozen headers.
-- Alternating row colours.
-- Minimal animations.
+1. Subject Name
+2. Maximum Marks
+3. Passing Marks
+4. Include in Pass/Fail (Yes/No)
+5. Include in Percentage (Yes/No)
+6. Assessment Components
+7. Maximum Marks for each Assessment Component
+8. TOTAL (Automatically calculated from assessment components)
 
-## Current Sprint
-Sprint 2 delivers the Class Register module for creating registers, maintaining students, and importing/exporting Excel files.
+## Final Sheet
+
+The Final sheet must NEVER contain hardcoded subject names.
+
+It must dynamically create one column for every subject configured while creating the workbook.
+
+After the subject columns, generate:
+
+- Total Marks
+- Maximum Marks
+- Percentage
+- Pass / Fail
+- Remarks
+
+## Pass / Fail
+
+Only subjects where Include in Pass/Fail = Yes must be considered.
+
+## Total Marks
+
+Only subjects where Include in Percentage = Yes must be included.
+
+## Maximum Marks
+
+Calculate only from subjects included in Percentage.
+
+## Percentage
+
+Percentage = Total Marks ÷ Maximum Marks × 100
+
+## Remarks
+
+Remarks should be generated using configurable remark rules.
