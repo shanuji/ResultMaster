@@ -92,12 +92,34 @@ class SqliteClassRegisterRepository implements ClassRegisterRepository {
   Future<void> deleteStudent(int studentId) => _db.delete('students', where: 'id = ?', whereArgs: [studentId]);
 
   @override
+  Future<void> appendStudents(int registerId, List<Student> students) async {
+    await _db.transaction((txn) async {
+      final now = DateTime.now().toIso8601String();
+      for (final student in students) {
+        await txn.insert('students', _studentToRow(student.copyWith(registerId: registerId))..addAll({'created_at': now, 'updated_at': now}));
+      }
+      await txn.update('class_registers', {'updated_at': now}, where: 'id = ?', whereArgs: [registerId]);
+    });
+  }
+
+  @override
   Future<void> replaceStudents(int registerId, List<Student> students) async {
     await _db.transaction((txn) async {
       await txn.delete('students', where: 'register_id = ?', whereArgs: [registerId]);
       final now = DateTime.now().toIso8601String();
       for (final student in students) {
         await txn.insert('students', _studentToRow(student.copyWith(registerId: registerId))..addAll({'created_at': now, 'updated_at': now}));
+      }
+      await txn.update('class_registers', {'updated_at': now}, where: 'id = ?', whereArgs: [registerId]);
+    });
+  }
+
+  @override
+  Future<void> appendStudents(int registerId, List<Student> students) async {
+    await _db.transaction((txn) async {
+      final now = DateTime.now().toIso8601String();
+      for (final student in students) {
+        await txn.insert('students', _studentToRow(student.copyWith(registerId: registerId))..addAll({'created_at': now, 'updated_at': now}), conflictAlgorithm: ConflictAlgorithm.abort);
       }
     });
   }
