@@ -44,7 +44,12 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS subjects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
-                sort_order INTEGER NOT NULL
+                sort_order INTEGER NOT NULL,
+                max_marks REAL NOT NULL DEFAULT 100,
+                pass_marks REAL NOT NULL DEFAULT 33,
+                include_in_pass_fail INTEGER NOT NULL DEFAULT 1,
+                include_in_percentage INTEGER NOT NULL DEFAULT 1,
+                configured INTEGER NOT NULL DEFAULT 1
             );
             CREATE TABLE IF NOT EXISTS students (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,6 +70,11 @@ def init_db() -> None:
             "INSERT OR IGNORE INTO workbook (id, pass_marks, max_marks, remark_rules) VALUES (1, 33, 100, ?)",
             (json.dumps(DEFAULT_REMARK_RULES),),
         )
+        for column, definition in (("max_marks", "REAL NOT NULL DEFAULT 100"), ("pass_marks", "REAL NOT NULL DEFAULT 33"), ("include_in_pass_fail", "INTEGER NOT NULL DEFAULT 1"), ("include_in_percentage", "INTEGER NOT NULL DEFAULT 1"), ("configured", "INTEGER NOT NULL DEFAULT 1")):
+            try:
+                con.execute(f"ALTER TABLE subjects ADD COLUMN {column} {definition}")
+            except sqlite3.OperationalError:
+                pass
         if con.execute("SELECT COUNT(*) FROM subjects").fetchone()[0] == 0:
             con.executemany(
                 "INSERT INTO subjects (name, sort_order) VALUES (?, ?)",
@@ -92,7 +102,7 @@ def workbook_payload() -> dict:
         ensure_mark_rows(con)
         settings = dict(con.execute("SELECT * FROM workbook WHERE id = 1").fetchone())
         settings["remark_rules"] = json.loads(settings["remark_rules"])
-        subjects = [dict(r) for r in con.execute("SELECT id, name FROM subjects ORDER BY sort_order, id")]
+        subjects = [dict(r) for r in con.execute("SELECT id, name, max_marks, pass_marks, include_in_pass_fail, include_in_percentage, configured FROM subjects WHERE configured = 1 ORDER BY sort_order, id")]
         students = [dict(r) for r in con.execute("SELECT id, roll_no, name FROM students ORDER BY CAST(roll_no AS INTEGER), roll_no")]
         marks = [dict(r) for r in con.execute("SELECT student_id, subject_id, marks FROM marks")]
     return {"settings": settings, "subjects": subjects, "students": students, "marks": marks}
@@ -101,15 +111,17 @@ def workbook_payload() -> dict:
 def calculate_summary(payload: dict) -> list[dict]:
     subjects = payload["subjects"]
     settings = payload["settings"]
-    max_total = len(subjects) * float(settings["max_marks"] or 0)
+    percentage_subjects = [s for s in subjects if bool(s.get("include_in_percentage", 1))]
+    pass_fail_subjects = [s for s in subjects if bool(s.get("include_in_pass_fail", 1))]
+    max_total = sum(float(s.get("max_marks") or settings["max_marks"] or 0) for s in percentage_subjects)
     mark_map = {(m["student_id"], m["subject_id"]): float(m["marks"] or 0) for m in payload["marks"]}
     rows = []
     for idx, student in enumerate(payload["students"], start=1):
         subject_totals = {s["name"]: mark_map.get((student["id"], s["id"]), 0) for s in subjects}
-        grand_total = sum(subject_totals.values())
+        grand_total = sum(subject_totals[s["name"]] for s in percentage_subjects)
         percentage = round((grand_total / max_total * 100) if max_total else 0, 2)
-        passed = all(subject_totals[s["name"]] >= float(settings["pass_marks"]) for s in subjects)
-        rows.append({"sno": idx, "roll_no": student["roll_no"], "student_name": student["name"], "subjects": subject_totals, "grand_total": grand_total, "percentage": percentage, "result": "PASS" if passed else "FAIL", "rank": 0, "remarks": remark_for(percentage, settings["remark_rules"])})
+        passed = all(subject_totals[s["name"]] >= float(s.get("pass_marks") or settings["pass_marks"]) for s in pass_fail_subjects)
+        rows.append({"sno": idx, "roll_no": student["roll_no"], "student_name": student["name"], "subjects": subject_totals, "grand_total": grand_total, "maximum_marks": max_total, "percentage": percentage, "result": "PASS" if passed else "FAIL", "rank": 0, "remarks": remark_for(percentage, settings["remark_rules"])})
     ranked = sorted(rows, key=lambda r: (-r["grand_total"], r["student_name"]))
     previous_total = None
     previous_rank = 0

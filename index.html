@@ -12,7 +12,7 @@
   <main>
     <section id="marks" class="panel active"><div class="toolbar"><strong>Subject marks</strong><span id="save-state">Autosaved</span></div><div class="sheet-wrap"><table id="marks-table" class="sheet"></table></div></section>
     <section id="summary" class="panel"><div class="toolbar"><input id="search" placeholder="Search Roll Number or Student Name"><select id="sort"><option value="roll_no">Sort: Roll Number</option><option value="student_name">Sort: Student Name</option><option value="grand_total">Sort: Grand Total</option><option value="rank">Sort: Rank</option><option value="percentage">Sort: Percentage</option></select><a class="button" href="/api/export/summary.xlsx">Export Summary (.xlsx)</a></div><div class="sheet-wrap"><table id="summary-table" class="sheet"></table></div></section>
-    <section id="final" class="panel placeholder"><h2>Final Sheet</h2><p>Placeholder only. The Final sheet will be implemented in a later sprint.</p></section>
+    <section id="final" class="panel"><div class="toolbar"><strong>Final Sheet</strong><span>Calculated from configured workbook subjects</span></div><div class="sheet-wrap final-wrap"><table id="final-table" class="sheet final-sheet"></table></div></section>
     <section id="settings" class="panel"><div class="settings-grid"><label>Pass Marks<input id="pass-marks" type="number" min="0" step="0.01"></label><label>Max Marks per Subject<input id="max-marks" type="number" min="1" step="0.01"></label></div><h2>Remark Rules</h2><p>Enter minimum percentage thresholds. Calculations autosave immediately.</p><div id="remark-rules"></div></section>
   </main>
   <script src="app.js"></script>

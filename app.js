@@ -46,19 +46,42 @@ async function onMarkChange(event) {
   calculateAndRenderSummary();
 }
 
-function calculateSummary() {
-  const maxTotal = state.subjects.length * Number(state.settings.max_marks || 0);
+function configuredSubjects() {
+  return state.subjects.filter(subject => subject.configured !== false);
+}
+
+function subjectMark(studentId, subject) {
+  return Number(markValue(studentId, subject.id) || 0);
+}
+
+function subjectMax(subject) {
+  return Number(subject.max_marks ?? state.settings.max_marks ?? 0);
+}
+
+function isIncluded(subject, field) {
+  return subject[field] !== false && subject[field] !== 0;
+}
+
+function calculateResultRows() {
+  const subjects = configuredSubjects();
+  const percentageSubjects = subjects.filter(subject => isIncluded(subject, 'include_in_percentage'));
+  const passFailSubjects = subjects.filter(subject => isIncluded(subject, 'include_in_pass_fail'));
+  const maximum_marks = percentageSubjects.reduce((total, subject) => total + subjectMax(subject), 0);
   const rows = state.students.map((student, idx) => {
-    const subjects = Object.fromEntries(state.subjects.map(subject => [subject.name, Number(markValue(student.id, subject.id) || 0)]));
-    const grand_total = Object.values(subjects).reduce((a, b) => a + b, 0);
-    const percentage = maxTotal ? Math.round((grand_total / maxTotal * 100) * 100) / 100 : 0;
-    const result = Object.values(subjects).every(v => v >= Number(state.settings.pass_marks)) ? 'PASS' : 'FAIL';
-    return {student_id: student.id, sno: idx + 1, roll_no: student.roll_no, student_name: student.name, subjects, grand_total, percentage, result, rank: 0, remarks: remarkFor(percentage)};
+    const subject_totals = Object.fromEntries(subjects.map(subject => [subject.name, subjectMark(student.id, subject)]));
+    const grand_total = percentageSubjects.reduce((total, subject) => total + subjectMark(student.id, subject), 0);
+    const percentage = maximum_marks ? Math.round((grand_total / maximum_marks * 100) * 100) / 100 : 0;
+    const result = passFailSubjects.every(subject => subjectMark(student.id, subject) >= Number(subject.pass_marks ?? state.settings.pass_marks ?? 0)) ? 'PASS' : 'FAIL';
+    return {student_id: student.id, sno: idx + 1, roll_no: student.roll_no, student_name: student.name, subjects: subject_totals, grand_total, maximum_marks, percentage, result, rank: 0, remarks: remarkFor(percentage)};
   });
   [...rows].sort((a,b) => b.grand_total - a.grand_total || a.student_name.localeCompare(b.student_name)).forEach((row, index, sorted) => {
     row.rank = index && row.grand_total === sorted[index - 1].grand_total ? sorted[index - 1].rank : index + 1;
   });
   return rows;
+}
+
+function calculateSummary() {
+  return calculateResultRows();
 }
 
 function remarkFor(percentage) {
@@ -68,6 +91,7 @@ function remarkFor(percentage) {
 function calculateAndRenderSummary() {
   summaryRows = calculateSummary();
   renderSummary();
+  renderFinalSheet();
 }
 
 function renderSummary() {
@@ -78,8 +102,16 @@ function renderSummary() {
     return String(a[sort]).localeCompare(String(b[sort]), undefined, {numeric:true});
   });
   if (sort === 'grand_total' || sort === 'percentage') rows.reverse();
-  const heads = ['S.No.', 'Roll No.', 'Student Name', ...state.subjects.map(s => s.name), 'Grand Total', 'Percentage', 'Result', 'Rank', 'Remarks'];
-  $('#summary-table').innerHTML = `<thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td>${row.sno}</td><td>${row.roll_no}</td><td>${row.student_name}</td>${state.subjects.map(s => `<td class="number">${fmt(row.subjects[s.name])}</td>`).join('')}<td class="number">${fmt(row.grand_total)}</td><td class="number">${row.percentage.toFixed(2)}</td><td class="${row.result.toLowerCase()}">${row.result}</td><td class="number">${row.rank}</td><td>${row.remarks}</td></tr>`).join('')}</tbody>`;
+  const subjects = configuredSubjects();
+  const heads = ['S.No.', 'Roll No.', 'Student Name', ...subjects.map(s => s.name), 'Grand Total', 'Maximum Marks', 'Percentage', 'Result', 'Rank', 'Remarks'];
+  $('#summary-table').innerHTML = `<thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td>${row.sno}</td><td>${row.roll_no}</td><td>${row.student_name}</td>${subjects.map(s => `<td class="number">${fmt(row.subjects[s.name])}</td>`).join('')}<td class="number">${fmt(row.grand_total)}</td><td class="number">${fmt(row.maximum_marks)}</td><td class="number">${row.percentage.toFixed(2)}</td><td class="${row.result.toLowerCase()}">${row.result}</td><td class="number">${row.rank}</td><td>${row.remarks}</td></tr>`).join('')}</tbody>`;
+}
+
+function renderFinalSheet() {
+  const rows = calculateResultRows();
+  const subjects = configuredSubjects();
+  const heads = ['S.No.', 'Roll No.', 'Student Name', ...subjects.map(s => s.name), 'Total Marks', 'Maximum Marks', 'Percentage', 'Pass / Fail', 'Remarks'];
+  $('#final-table').innerHTML = `<thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td>${row.sno}</td><td>${row.roll_no}</td><td>${row.student_name}</td>${subjects.map(s => `<td class="number">${fmt(row.subjects[s.name])}</td>`).join('')}<td class="number">${fmt(row.grand_total)}</td><td class="number">${fmt(row.maximum_marks)}</td><td class="number">${row.percentage.toFixed(2)}</td><td class="${row.result.toLowerCase()}">${row.result}</td><td>${row.remarks}</td></tr>`).join('')}</tbody>`;
 }
 
 function renderSettings() {
