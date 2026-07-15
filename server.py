@@ -147,19 +147,43 @@ def workbook_payload() -> dict:
     return {"settings": settings, "subjects": subjects, "students": students, "marks": marks}
 
 
+def subject_max_marks(subject: dict, settings: dict) -> float:
+    return float(
+        subject.get("max_marks")
+        or subject.get("maximum_marks")
+        or settings.get("max_marks")
+        or settings.get("maximum_marks")
+        or 0
+    )
+
+
+def subject_pass_marks(subject: dict, settings: dict) -> float:
+    return float(
+        subject.get("pass_marks")
+        or subject.get("passing_marks")
+        or settings.get("pass_marks")
+        or settings.get("passing_marks")
+        or 0
+    )
+
+
+def include_subject(subject: dict, canonical_key: str, legacy_key: str) -> bool:
+    return bool(subject.get(canonical_key, subject.get(legacy_key, 1)))
+
+
 def calculate_summary(payload: dict) -> list[dict]:
     subjects = payload["subjects"]
     settings = payload["settings"]
-    percentage_subjects = [s for s in subjects if bool(s.get("include_in_percentage", 1))]
-    pass_fail_subjects = [s for s in subjects if bool(s.get("include_in_pass_fail", 1))]
-    max_total = sum(float(s.get("max_marks") or settings["max_marks"] or 0) for s in percentage_subjects)
+    percentage_subjects = [s for s in subjects if include_subject(s, "include_in_percentage", "include_percentage")]
+    pass_fail_subjects = [s for s in subjects if include_subject(s, "include_in_pass_fail", "include_pass_fail")]
+    max_total = sum(subject_max_marks(s, settings) for s in percentage_subjects)
     mark_map = {(m["student_id"], m["subject_id"]): float(m["marks"] or 0) for m in payload["marks"]}
     rows = []
     for idx, student in enumerate(payload["students"], start=1):
         subject_totals = {s["name"]: mark_map.get((student["id"], s["id"]), 0) for s in subjects}
         grand_total = sum(subject_totals[s["name"]] for s in percentage_subjects)
         percentage = round((grand_total / max_total * 100) if max_total else 0, 2)
-        passed = all(subject_totals[s["name"]] >= float(s.get("pass_marks") or settings["pass_marks"]) for s in pass_fail_subjects)
+        passed = all(subject_totals[s["name"]] >= subject_pass_marks(s, settings) for s in pass_fail_subjects)
         rows.append({"sno": idx, "roll_no": student["roll_no"], "student_name": student["name"], "subjects": subject_totals, "grand_total": grand_total, "maximum_marks": max_total, "percentage": percentage, "result": "PASS" if passed else "FAIL", "rank": 0, "remarks": remark_for(percentage, settings["remark_rules"])})
     ranked = sorted(rows, key=lambda r: (-r["grand_total"], r["student_name"]))
     previous_total = None
@@ -269,12 +293,12 @@ class Handler(SimpleHTTPRequestHandler):
         data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         with db() as con:
             if path == "/api/marks":
-                subject = con.execute("SELECT maximum_marks FROM subjects WHERE id = ?", (data["subject_id"],)).fetchone()
+                subject = con.execute("SELECT max_marks FROM subjects WHERE id = ?", (data["subject_id"],)).fetchone()
                 if subject is None:
                     self.error_json(400, "Invalid subject")
                     return
                 marks = float(data["marks"] or 0)
-                if marks < 0 or marks > float(subject["maximum_marks"]):
+                if marks < 0 or marks > float(subject["max_marks"]):
                     self.error_json(400, "Marks must be between 0 and the subject maximum")
                     return
                 con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (data["student_id"], data["subject_id"], marks))
@@ -297,8 +321,19 @@ class Handler(SimpleHTTPRequestHandler):
                 )
                 for subject in data.get("subjects", []):
                     con.execute(
-                        "UPDATE subjects SET include_pass_fail = ?, include_percentage = ? WHERE id = ?",
-                        (1 if subject.get("include_pass_fail") else 0, 1 if subject.get("include_percentage") else 0, subject["id"]),
+                        """
+                        UPDATE subjects
+                        SET include_in_pass_fail = ?, include_in_percentage = ?,
+                            include_pass_fail = ?, include_percentage = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            1 if subject.get("include_in_pass_fail", subject.get("include_pass_fail")) else 0,
+                            1 if subject.get("include_in_percentage", subject.get("include_percentage")) else 0,
+                            1 if subject.get("include_in_pass_fail", subject.get("include_pass_fail")) else 0,
+                            1 if subject.get("include_in_percentage", subject.get("include_percentage")) else 0,
+                            subject["id"],
+                        ),
                     )
             else:
                 self.send_error(404)
