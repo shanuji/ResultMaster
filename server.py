@@ -210,10 +210,10 @@ def dashboard_payload() -> dict:
 def xlsx_bytes() -> bytes:
     payload = workbook_payload()
     rows = calculate_summary(payload)
-    headers = ["S.No.", "Roll No.", "Student Name", *[s["name"] for s in payload["subjects"]], "Grand Total", "Percentage", "Result", "Rank", "Remarks"]
+    headers = ["S.No.", "Roll No.", "Student Name", *[s["name"] for s in payload["subjects"]], "Total Marks", "Maximum Marks", "Percentage", "Pass / Fail", "Rank", "Remarks"]
     table = [headers]
     for r in rows:
-        table.append([r["sno"], r["roll_no"], r["student_name"], *[r["subjects"][s["name"]] for s in payload["subjects"]], r["grand_total"], r["percentage"], r["result"], r["rank"], r["remarks"]])
+        table.append([r["sno"], r["roll_no"], r["student_name"], *[r["subjects"][s["name"]] for s in payload["subjects"]], r["grand_total"], r["maximum_marks"], r["percentage"], r["result"], r["rank"], r["remarks"]])
     sheet_rows = []
     for ridx, row in enumerate(table, 1):
         cells = []
@@ -269,7 +269,15 @@ class Handler(SimpleHTTPRequestHandler):
         data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         with db() as con:
             if path == "/api/marks":
-                con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (data["student_id"], data["subject_id"], data["marks"]))
+                subject = con.execute("SELECT maximum_marks FROM subjects WHERE id = ?", (data["subject_id"],)).fetchone()
+                if subject is None:
+                    self.error_json(400, "Invalid subject")
+                    return
+                marks = float(data["marks"] or 0)
+                if marks < 0 or marks > float(subject["maximum_marks"]):
+                    self.error_json(400, "Marks must be between 0 and the subject maximum")
+                    return
+                con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (data["student_id"], data["subject_id"], marks))
             elif path == "/api/settings":
                 con.execute(
                     """
@@ -296,6 +304,14 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(404)
                 return
         self.json(workbook_payload())
+
+    def error_json(self, status: int, message: str) -> None:
+        data = json.dumps({"error": message}).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def json(self, obj: dict) -> None:
         data = json.dumps(obj).encode()

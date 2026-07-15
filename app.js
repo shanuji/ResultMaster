@@ -19,7 +19,7 @@ function markValue(studentId, subjectId) {
 
 function renderMarks() {
   const table = $('#marks-table');
-  const heads = ['S.No.', 'Roll No.', 'Student Name', ...state.subjects.map(s => s.name), 'Grand Total', 'Percentage', 'Result', 'Rank'];
+  const heads = ['S.No.', 'Roll No.', 'Student Name', ...state.subjects.map(s => s.name), 'Total Marks', 'Maximum Marks', 'Percentage', 'Pass / Fail', 'Rank'];
   table.innerHTML = `<thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody></tbody>`;
   const body = table.querySelector('tbody');
   const currentSummary = calculateSummary();
@@ -27,8 +27,8 @@ function renderMarks() {
     const rowSummary = currentSummary.find(r => r.student_id === student.id);
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${index + 1}</td><td>${student.roll_no}</td><td>${student.name}</td>` +
-      state.subjects.map(subject => `<td><input type="number" min="0" max="${state.settings.max_marks}" step="0.01" value="${markValue(student.id, subject.id)}" data-student="${student.id}" data-subject="${subject.id}"></td>`).join('') +
-      `<td class="number">${fmt(rowSummary.grand_total)}</td><td class="number">${rowSummary.percentage.toFixed(2)}</td><td class="${rowSummary.result.toLowerCase()}">${rowSummary.result}</td><td class="number">${rowSummary.rank}</td>`;
+      state.subjects.map(subject => `<td><input type="number" min="0" max="${subject.maximum_marks || state.settings.max_marks}" step="0.01" value="${markValue(student.id, subject.id)}" data-student="${student.id}" data-subject="${subject.id}"></td>`).join('') +
+      `<td class="number">${fmt(rowSummary.grand_total)}</td><td class="number">${fmt(rowSummary.maximum_marks)}</td><td class="number">${rowSummary.percentage.toFixed(2)}</td><td class="${rowSummary.result.toLowerCase()}">${rowSummary.result}</td><td class="number">${rowSummary.rank}</td>`;
     body.appendChild(tr);
   });
   table.querySelectorAll('input').forEach(input => input.addEventListener('input', onMarkChange));
@@ -39,12 +39,28 @@ async function onMarkChange(event) {
   const marks = Number(input.value || 0);
   const student_id = Number(input.dataset.student);
   const subject_id = Number(input.dataset.subject);
+  const subject = state.subjects.find(s => s.id === subject_id);
+  if (marks < 0 || marks > Number(subject?.maximum_marks || state.settings.max_marks || 0)) {
+    $('#save-state').textContent = 'Invalid marks';
+    renderMarks();
+    return;
+  }
+  const previousMarks = state.marks.map(mark => ({...mark}));
   const existing = state.marks.find(m => m.student_id === student_id && m.subject_id === subject_id);
   if (existing) existing.marks = marks; else state.marks.push({student_id, subject_id, marks});
   $('#save-state').textContent = 'Saving...';
   renderMarks();
   calculateAndRenderSummary();
-  state = await fetch('/api/marks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({student_id, subject_id, marks})}).then(r => r.json());
+  const response = await fetch('/api/marks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({student_id, subject_id, marks})});
+  const payload = await response.json();
+  if (!response.ok) {
+    state.marks = previousMarks;
+    $('#save-state').textContent = payload.error || 'Save failed';
+    renderMarks();
+    calculateAndRenderSummary();
+    return;
+  }
+  state = payload;
   $('#save-state').textContent = 'Autosaved';
   renderMarks();
   calculateAndRenderSummary();

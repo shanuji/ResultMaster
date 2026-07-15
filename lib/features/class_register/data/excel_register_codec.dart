@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:excel/excel.dart';
 
 import '../domain/class_register_failure.dart';
