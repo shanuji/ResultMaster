@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -46,6 +47,27 @@ class _ClassRegisterScreenState extends State<ClassRegisterScreen> {
           floatingActionButton: controller.selected == null ? null : FloatingActionButton.extended(onPressed: () => _studentDialog(), icon: const Icon(Icons.person_add_alt), label: const Text('Add Student')),
         ),
       );
+
+
+  Future<void> _importExcel() async {
+    final picked = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const <String>['xlsx']);
+    final path = picked?.files.single.path;
+    if (path == null) return;
+    try {
+      final codec = ExcelRegisterCodec();
+      final workbook = await codec.inspectFile(File(path));
+      if (!mounted) return;
+      final selection = await showDialog<_ImportSelection>(context: context, builder: (_) => _ImportMappingDialog(workbook: workbook));
+      if (selection == null) return;
+      final imported = workbook.students(controller.selected!.id, worksheet: selection.worksheet, rollNumberColumn: selection.rollColumn, studentNameColumn: selection.nameColumn);
+      final summary = await controller.importStudents(imported, mode: selection.mode);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported ${summary.imported} students (${summary.mode.name}); skipped ${summary.blankRowsSkipped} blank rows.')));
+      }
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
 
   Future<void> _registerDialog({ClassRegister? register}) async {
     final text = TextEditingController(text: register?.name ?? '');
@@ -226,4 +248,49 @@ class _Cell extends StatelessWidget {
   final String text; final int flex; final bool header;
   @override
   Widget build(BuildContext context) => Expanded(flex: flex, child: Container(decoration: BoxDecoration(border: Border.all(color: ExcelTheme.gridLine, width: .5)), padding: const EdgeInsets.all(10), child: Text(text, style: TextStyle(fontWeight: header ? FontWeight.w700 : FontWeight.w400))));
+}
+
+
+class _ImportSelection {
+  const _ImportSelection({required this.worksheet, required this.rollColumn, required this.nameColumn, required this.mode});
+  final String worksheet;
+  final String rollColumn;
+  final String nameColumn;
+  final ImportMode mode;
+}
+
+class _ImportMappingDialog extends StatefulWidget {
+  const _ImportMappingDialog({required this.workbook});
+  final ExcelRegisterWorkbook workbook;
+
+  @override
+  State<_ImportMappingDialog> createState() => _ImportMappingDialogState();
+}
+
+class _ImportMappingDialogState extends State<_ImportMappingDialog> {
+  late String worksheet = widget.workbook.sheetNames.first;
+  String? rollColumn;
+  String? nameColumn;
+  ImportMode mode = ImportMode.replace;
+
+  @override
+  Widget build(BuildContext context) {
+    final columns = widget.workbook.columns(worksheet);
+    rollColumn ??= columns.contains('Roll Number') ? 'Roll Number' : columns.firstOrNull;
+    nameColumn ??= columns.contains('Student Name') ? 'Student Name' : (columns.length > 1 ? columns[1] : columns.firstOrNull);
+    return AlertDialog(
+      title: const Text('Import Students from Excel'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+        DropdownButtonFormField<String>(value: worksheet, decoration: const InputDecoration(labelText: 'Worksheet'), items: [for (final sheet in widget.workbook.sheetNames) DropdownMenuItem(value: sheet, child: Text(sheet))], onChanged: (value) => setState(() { worksheet = value!; rollColumn = null; nameColumn = null; })),
+        DropdownButtonFormField<String>(value: rollColumn, decoration: const InputDecoration(labelText: 'Roll Number column'), items: [for (final column in columns) DropdownMenuItem(value: column, child: Text(column))], onChanged: (value) => setState(() => rollColumn = value)),
+        DropdownButtonFormField<String>(value: nameColumn, decoration: const InputDecoration(labelText: 'Student Name column'), items: [for (final column in columns) DropdownMenuItem(value: column, child: Text(column))], onChanged: (value) => setState(() => nameColumn = value)),
+        RadioListTile<ImportMode>(value: ImportMode.replace, groupValue: mode, onChanged: (value) => setState(() => mode = value!), title: const Text('Replace Existing')),
+        RadioListTile<ImportMode>(value: ImportMode.append, groupValue: mode, onChanged: (value) => setState(() => mode = value!), title: const Text('Append')),
+      ]),
+      actions: <Widget>[
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: rollColumn == null || nameColumn == null ? null : () => Navigator.pop(context, _ImportSelection(worksheet: worksheet, rollColumn: rollColumn!, nameColumn: nameColumn!, mode: mode)), child: const Text('Import')),
+      ],
+    );
+  }
 }

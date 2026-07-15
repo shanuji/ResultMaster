@@ -11,91 +11,23 @@ class ExcelRegisterCodec {
   Future<ExcelRegisterWorkbook> inspectFile(File file) async {
     final bytes = await file.readAsBytes();
     final workbook = Excel.decodeBytes(bytes);
-    final sheets = workbook.tables.entries
-        .map((entry) => ExcelRegisterSheet(
-              name: entry.key,
-              columns: _columnsFor(entry.value),
-            ))
-        .where((sheet) => sheet.columns.isNotEmpty)
-        .toList(growable: false);
-    if (sheets.isEmpty) {
-      throw const ClassRegisterFailure('Excel file does not contain any worksheets with columns.');
-    }
-    return ExcelRegisterWorkbook(file: file, sheets: sheets);
+    return ExcelRegisterWorkbook(workbook);
   }
 
-  Future<ExcelRegisterImportPreview> previewImport({
-    required File file,
-    required String sheetName,
-    required int rollNumberColumn,
-    required int studentNameColumn,
-    required int registerId,
+  Future<List<Student>> importFile(
+    File file,
+    int registerId, {
+    String? worksheet,
+    required String rollNumberColumn,
+    required String studentNameColumn,
   }) async {
-    if (rollNumberColumn == studentNameColumn) {
-      throw const ClassRegisterFailure('Roll Number and Student Name must use different columns.');
-    }
-    final bytes = await file.readAsBytes();
-    final workbook = Excel.decodeBytes(bytes);
-    final sheet = workbook.tables[sheetName];
-    if (sheet == null) {
-      throw ClassRegisterFailure('Worksheet "$sheetName" was not found.');
-    }
-
-    final students = <Student>[];
-    final duplicateRollNumbers = <String>{};
-    final seenRollNumbers = <String>{};
-    var skipped = 0;
-
-    for (final row in sheet.rows.skip(1)) {
-      if (_isBlankRow(row)) {
-        skipped++;
-        continue;
-      }
-      final rollNumber = _valueAt(row, rollNumberColumn);
-      final name = _valueAt(row, studentNameColumn);
-      if (rollNumber.isEmpty && name.isEmpty) {
-        skipped++;
-        continue;
-      }
-      if (rollNumber.isEmpty || name.isEmpty) {
-        skipped++;
-        continue;
-      }
-      final normalizedRollNumber = rollNumber.toLowerCase();
-      if (!seenRollNumbers.add(normalizedRollNumber)) {
-        duplicateRollNumbers.add(rollNumber);
-        skipped++;
-        continue;
-      }
-      students.add(Student(registerId: registerId, rollNumber: rollNumber, name: name));
-    }
-
-    return ExcelRegisterImportPreview(
-      students: students,
-      skipped: skipped,
-      duplicateRollNumbers: duplicateRollNumbers.toList(growable: false)..sort(),
-    );
-  }
-
-  Future<List<Student>> importFile(File file, int registerId) async {
     final workbook = await inspectFile(file);
-    final sheet = workbook.sheets.first;
-    final rollIndex = sheet.columns.indexWhere((column) => column.header == 'Roll Number');
-    final nameIndex = sheet.columns.indexWhere((column) => column.header == 'Student Name');
-    if (rollIndex == -1 || nameIndex == -1) {
-      throw const ClassRegisterFailure('Excel file must include Roll Number and Student Name headers.');
-    }
-    final preview = await previewImport(
-      file: file,
-      sheetName: sheet.name,
-      rollNumberColumn: rollIndex,
-      studentNameColumn: nameIndex,
-      registerId: registerId,
+    return workbook.students(
+      registerId,
+      worksheet: worksheet ?? workbook.sheetNames.first,
+      rollNumberColumn: rollNumberColumn,
+      studentNameColumn: studentNameColumn,
     );
-    if (preview.duplicateRollNumbers.isNotEmpty) {
-      throw const ClassRegisterFailure('Import contains duplicate Roll Numbers.');
-    }
-    return preview.students;
   }
 
   Future<File> exportFile(File file, List<Student> students) async {
@@ -161,4 +93,59 @@ class ExcelRegisterImportPreview {
 
   int get imported => students.length;
   int get duplicates => duplicateRollNumbers.length;
+}
+
+class ExcelRegisterWorkbook {
+  const ExcelRegisterWorkbook(this._workbook);
+
+  final Excel _workbook;
+
+  List<String> get sheetNames => _workbook.tables.keys.toList(growable: false);
+
+  List<String> columns(String worksheet) {
+    final sheet = _sheet(worksheet);
+    if (sheet.rows.isEmpty) return const <String>[];
+    return sheet.rows.first
+        .map((cell) => cell?.value.toString().trim() ?? '')
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<Student> students(
+    int registerId, {
+    required String worksheet,
+    required String rollNumberColumn,
+    required String studentNameColumn,
+  }) {
+    final sheet = _sheet(worksheet);
+    if (sheet.rows.isEmpty) return const <Student>[];
+    final header = sheet.rows.first.map((cell) => cell?.value.toString().trim() ?? '').toList();
+    final rollIndex = header.indexOf(rollNumberColumn);
+    final nameIndex = header.indexOf(studentNameColumn);
+    if (rollIndex == -1 || nameIndex == -1) {
+      throw const ClassRegisterFailure('Selected worksheet does not include the mapped Roll Number and Student Name columns.');
+    }
+    final imported = <Student>[];
+    final seenRolls = <String>{};
+    for (final row in sheet.rows.skip(1)) {
+      String valueAt(int index) => index < row.length ? row[index]?.value.toString().trim() ?? '' : '';
+      final rollNumber = valueAt(rollIndex);
+      final name = valueAt(nameIndex);
+      if (rollNumber.isEmpty && name.isEmpty) continue;
+      if (rollNumber.isEmpty || name.isEmpty) {
+        throw const ClassRegisterFailure('Import contains a row with a blank Roll Number or Student Name.');
+      }
+      if (!seenRolls.add(rollNumber.toLowerCase())) {
+        throw ClassRegisterFailure('Import contains duplicate Roll Number: $rollNumber.');
+      }
+      imported.add(Student(registerId: registerId, rollNumber: rollNumber, name: name));
+    }
+    return imported;
+  }
+
+  Sheet _sheet(String worksheet) {
+    final sheet = _workbook.tables[worksheet];
+    if (sheet == null) throw ClassRegisterFailure('Worksheet "$worksheet" was not found.');
+    return sheet;
+  }
 }
