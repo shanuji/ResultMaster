@@ -11,10 +11,14 @@
     <header class="toolbar">
       <h1>ResultMaster</h1>
       <input id="search" type="search" placeholder="Search Roll Number or Student Name">
-      <button id="insertStudent">Insert Student</button>
+      <select id="studentSelect" aria-label="Student for individual printing"></select>
+      <button id="printClass">Class Print Preview</button>
+      <button id="printStudent">Student Print Preview</button>
+      <button id="exportPdf">Export PDF</button>
+      <button id="exportExcel">Export Excel</button>
       <span id="status" role="status"></span>
     </header>
-    <nav id="tabs" class="tabs" aria-label="Workbook sheets"></nav>
+    <section id="settings" class="settings"></section>
     <section id="sheet" class="sheet"></section>
   </main>
   <script src="/static/app.js"></script>
