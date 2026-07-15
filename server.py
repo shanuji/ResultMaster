@@ -23,6 +23,13 @@ DEFAULT_REMARK_RULES = [
     {"min": 0, "remark": "Needs Improvement"},
 ]
 DEFAULT_SUBJECTS = ["English", "Hindi", "Mathematics", "Science", "SST"]
+DEFAULT_SCORE_BANDS = [
+    {"min": 90, "label": "A+"},
+    {"min": 75, "label": "A"},
+    {"min": 60, "label": "B"},
+    {"min": 40, "label": "C"},
+    {"min": 0, "label": "D"},
+]
 
 
 def db() -> sqlite3.Connection:
@@ -37,8 +44,15 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS workbook (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
+                academic_year TEXT NOT NULL DEFAULT '2025-26',
+                class_name TEXT NOT NULL DEFAULT 'Class 1',
+                section TEXT NOT NULL DEFAULT 'A',
+                examination_name TEXT NOT NULL DEFAULT 'Term Examination',
                 pass_marks REAL NOT NULL DEFAULT 33,
                 max_marks REAL NOT NULL DEFAULT 100,
+                distinction_percentage REAL NOT NULL DEFAULT 75,
+                qi_basis TEXT NOT NULL DEFAULT 'appeared',
+                score_bands TEXT NOT NULL DEFAULT '',
                 remark_rules TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS subjects (
@@ -66,9 +80,14 @@ def init_db() -> None:
             );
             """
         )
+        migrate_schema(con)
         con.execute(
-            "INSERT OR IGNORE INTO workbook (id, pass_marks, max_marks, remark_rules) VALUES (1, 33, 100, ?)",
-            (json.dumps(DEFAULT_REMARK_RULES),),
+            """
+            INSERT OR IGNORE INTO workbook (
+                id, pass_marks, max_marks, distinction_percentage, qi_basis, score_bands, remark_rules
+            ) VALUES (1, 33, 100, 75, 'appeared', ?, ?)
+            """,
+            (json.dumps(DEFAULT_SCORE_BANDS), json.dumps(DEFAULT_REMARK_RULES)),
         )
         for column, definition in (("max_marks", "REAL NOT NULL DEFAULT 100"), ("pass_marks", "REAL NOT NULL DEFAULT 33"), ("include_in_pass_fail", "INTEGER NOT NULL DEFAULT 1"), ("include_in_percentage", "INTEGER NOT NULL DEFAULT 1"), ("configured", "INTEGER NOT NULL DEFAULT 1")):
             try:
@@ -77,7 +96,7 @@ def init_db() -> None:
                 pass
         if con.execute("SELECT COUNT(*) FROM subjects").fetchone()[0] == 0:
             con.executemany(
-                "INSERT INTO subjects (name, sort_order) VALUES (?, ?)",
+                "INSERT INTO subjects (name, sort_order, include_pass_fail, include_percentage) VALUES (?, ?, 1, 1)",
                 [(name, i) for i, name in enumerate(DEFAULT_SUBJECTS)],
             )
         if con.execute("SELECT COUNT(*) FROM students").fetchone()[0] == 0:
@@ -87,6 +106,26 @@ def init_db() -> None:
             )
         ensure_mark_rows(con)
 
+
+
+def migrate_schema(con: sqlite3.Connection) -> None:
+    workbook_columns = {row[1] for row in con.execute("PRAGMA table_info(workbook)")}
+    for name, definition in {
+        "academic_year": "TEXT NOT NULL DEFAULT '2025-26'",
+        "class_name": "TEXT NOT NULL DEFAULT 'Class 1'",
+        "section": "TEXT NOT NULL DEFAULT 'A'",
+        "examination_name": "TEXT NOT NULL DEFAULT 'Term Examination'",
+        "distinction_percentage": "REAL NOT NULL DEFAULT 75",
+        "qi_basis": "TEXT NOT NULL DEFAULT 'appeared'",
+        "score_bands": "TEXT NOT NULL DEFAULT ''",
+    }.items():
+        if name not in workbook_columns:
+            con.execute(f"ALTER TABLE workbook ADD COLUMN {name} {definition}")
+    subject_columns = {row[1] for row in con.execute("PRAGMA table_info(subjects)")}
+    if "include_pass_fail" not in subject_columns:
+        con.execute("ALTER TABLE subjects ADD COLUMN include_pass_fail INTEGER NOT NULL DEFAULT 1")
+    if "include_percentage" not in subject_columns:
+        con.execute("ALTER TABLE subjects ADD COLUMN include_percentage INTEGER NOT NULL DEFAULT 1")
 
 def ensure_mark_rows(con: sqlite3.Connection) -> None:
     con.execute(
@@ -140,6 +179,34 @@ def remark_for(percentage: float, rules: list[dict]) -> str:
     return ""
 
 
+def score_band_for(percentage: float, bands: list[dict]) -> str:
+    for band in sorted(bands, key=lambda r: float(r.get("min", 0)), reverse=True):
+        if percentage >= float(band.get("min", 0)):
+            return str(band.get("label", ""))
+    return ""
+
+
+def dashboard_payload() -> dict:
+    payload = workbook_payload()
+    total_cells = len(payload["students"]) * len(payload["subjects"])
+    filled_cells = sum(1 for mark in payload["marks"] if float(mark.get("marks") or 0) > 0)
+    progress = round((filled_cells / total_cells * 100) if total_cells else 0, 2)
+    status = "Not Started" if progress == 0 else "Completed" if progress == 100 else "In Progress"
+    settings = payload["settings"]
+    workbook = {
+        "id": 1,
+        "academic_year": settings["academic_year"],
+        "class_name": settings["class_name"],
+        "section": settings["section"],
+        "examination_name": settings["examination_name"],
+        "student_count": len(payload["students"]),
+        "subject_count": len(payload["subjects"]),
+        "status": status,
+        "progress": progress,
+    }
+    return {"groups": [{"class_name": workbook["class_name"], "examinations": [{"examination_name": workbook["examination_name"], "workbooks": [workbook]}]}]}
+
+
 def xlsx_bytes() -> bytes:
     payload = workbook_payload()
     rows = calculate_summary(payload)
@@ -180,7 +247,9 @@ def col_name(n: int) -> str:
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
-        if path == "/api/workbook":
+        if path == "/api/dashboard":
+            self.json(dashboard_payload())
+        elif path == "/api/workbook":
             self.json(workbook_payload())
         elif path == "/api/summary":
             self.json({"rows": calculate_summary(workbook_payload())})
@@ -202,7 +271,27 @@ class Handler(SimpleHTTPRequestHandler):
             if path == "/api/marks":
                 con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (data["student_id"], data["subject_id"], data["marks"]))
             elif path == "/api/settings":
-                con.execute("UPDATE workbook SET pass_marks = ?, max_marks = ?, remark_rules = ? WHERE id = 1", (data["pass_marks"], data["max_marks"], json.dumps(data["remark_rules"])))
+                con.execute(
+                    """
+                    UPDATE workbook
+                    SET pass_marks = ?, max_marks = ?, distinction_percentage = ?, qi_basis = ?,
+                        score_bands = ?, remark_rules = ?
+                    WHERE id = 1
+                    """,
+                    (
+                        data["pass_marks"],
+                        data["max_marks"],
+                        data.get("distinction_percentage", 75),
+                        data.get("qi_basis", "appeared"),
+                        json.dumps(data.get("score_bands", DEFAULT_SCORE_BANDS)),
+                        json.dumps(data["remark_rules"]),
+                    ),
+                )
+                for subject in data.get("subjects", []):
+                    con.execute(
+                        "UPDATE subjects SET include_pass_fail = ?, include_percentage = ? WHERE id = ?",
+                        (1 if subject.get("include_pass_fail") else 0, 1 if subject.get("include_percentage") else 0, subject["id"]),
+                    )
             else:
                 self.send_error(404)
                 return
