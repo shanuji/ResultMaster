@@ -44,15 +44,39 @@ class ClassRegisterService {
 
   Future<void> deleteStudent(int studentId) => _repository.deleteStudent(studentId);
 
-  Future<void> importStudents(int registerId, List<Student> imported) async {
+  Future<ImportSummary> importStudents(int registerId, List<Student> imported, {ImportMode mode = ImportMode.replace}) async {
+    final existing = mode == ImportMode.append ? await _repository.students(registerId) : const <Student>[];
+    final normalizedStudents = <Student>[];
     final seen = <String>{};
+    var blankRowsSkipped = 0;
     for (final student in imported) {
       final normalized = student.copyWith(registerId: registerId, rollNumber: student.rollNumber.trim(), name: student.name.trim());
-      _validator.validate(normalized, const <Student>[]);
-      if (!seen.add(normalized.rollNumber.toLowerCase())) {
-        throw const ClassRegisterFailure('Import contains duplicate Roll Numbers.');
+      if (normalized.rollNumber.isEmpty && normalized.name.isEmpty) {
+        blankRowsSkipped++;
+        continue;
       }
+      _validator.validate(normalized, <Student>[...existing, ...normalizedStudents]);
+      if (!seen.add(normalized.rollNumber.toLowerCase())) {
+        throw ClassRegisterFailure('Import contains duplicate Roll Number: ${normalized.rollNumber}.');
+      }
+      normalizedStudents.add(normalized);
     }
-    await _repository.replaceStudents(registerId, imported);
+    if (mode == ImportMode.replace) {
+      await _repository.replaceStudents(registerId, normalizedStudents);
+    } else {
+      await _repository.appendStudents(registerId, normalizedStudents);
+    }
+    return ImportSummary(imported: normalizedStudents.length, blankRowsSkipped: blankRowsSkipped, mode: mode);
   }
+}
+
+
+enum ImportMode { replace, append }
+
+class ImportSummary {
+  const ImportSummary({required this.imported, required this.blankRowsSkipped, required this.mode});
+
+  final int imported;
+  final int blankRowsSkipped;
+  final ImportMode mode;
 }
