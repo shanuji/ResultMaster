@@ -12,4 +12,5 @@ abstract interface class ClassRegisterRepository {
   Future<void> updateStudent(Student student);
   Future<void> deleteStudent(int studentId);
   Future<void> replaceStudents(int registerId, List<Student> students);
+  Future<void> appendStudents(int registerId, List<Student> students);
 }

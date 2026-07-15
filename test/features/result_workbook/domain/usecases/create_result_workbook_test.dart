@@ -14,6 +14,21 @@ class FakeResultWorkbookRepository implements ResultWorkbookRepository {
 
   @override
   Future<List<Student>> getClassRegisterStudents(int classRegisterId) async => const <Student>[];
+
+  @override
+  Future<List<WorkbookSummary>> listWorkbooks() async => const <WorkbookSummary>[];
+
+  @override
+  Future<OpenedWorkbook> openWorkbook(int workbookId) async => throw UnimplementedError();
+
+  @override
+  Future<void> renameWorkbook(int workbookId, String examinationName) async {}
+
+  @override
+  Future<void> deleteWorkbook(int workbookId) async {}
+
+  @override
+  Future<void> saveMark({required int workbookId, required int studentId, required int componentId, double? marks}) async {}
 }
 
 void main() {
