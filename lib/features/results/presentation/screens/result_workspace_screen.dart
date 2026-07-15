@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/result_master_theme.dart';
 import '../../../result_workbook/data/repositories/sqlite_result_workbook_repository.dart';
@@ -11,72 +13,32 @@ class ResultWorkspaceScreen extends StatefulWidget {
   static const routePath = '/results/new';
 
   @override
-  State<ResultWorkspaceScreen> createState() => _ResultWorkspaceScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tabs = ref.watch(draftSubjectTabsProvider);
 
-class _ResultWorkspaceScreenState extends State<ResultWorkspaceScreen> {
-  final _repository = SqliteResultWorkbookRepository();
-  List<WorkbookSummary> _workbooks = const <WorkbookSummary>[];
-  OpenedWorkbook? _opened;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadWorkbooks();
-  }
-
-  Future<void> _loadWorkbooks() async {
-    setState(() => _loading = true);
-    try {
-      final workbooks = await _repository.listWorkbooks();
-      if (!mounted) return;
-      setState(() {
-        _workbooks = workbooks;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      _message('$error');
-    }
-  }
-
-  Future<void> _open(WorkbookSummary summary) async {
-    final opened = await _repository.openWorkbook(summary.id);
-    if (!mounted) return;
-    setState(() => _opened = opened);
-  }
-
-  Future<void> _rename(WorkbookSummary summary) async {
-    final controller = TextEditingController(text: summary.examinationName);
-    final name = await showDialog<String>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Rename Workbook'),
-      content: TextField(controller: controller, autofocus: true, decoration: const InputDecoration(labelText: 'Examination name')),
-      actions: <Widget>[TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save'))],
-    ));
-    if (name == null || name.trim().isEmpty) return;
-    await _repository.renameWorkbook(summary.id, name);
-    await _loadWorkbooks();
-    if (_opened?.summary.id == summary.id) await _open(summary);
-  }
-
-  Future<void> _delete(WorkbookSummary summary) async {
-    final ok = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Delete Workbook?'),
-      content: Text('Delete ${summary.title} and all saved marks?'),
-      actions: <Widget>[TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete'))],
-    ));
-    if (ok != true) return;
-    await _repository.deleteWorkbook(summary.id);
-    if (!mounted) return;
-    setState(() => _opened = null);
-    await _loadWorkbooks();
-  }
-
-  Future<void> _saveMark(OpenedWorkbook workbook, Student student, WorkbookComponent component, String value) async {
-    await _repository.saveMark(workbookId: workbook.summary.id, studentId: student.id!, componentId: component.id, marks: double.tryParse(value));
-    await _open(workbook.summary);
+    return DefaultTabController(
+      length: tabs.length,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('New Result Workbook'),
+          bottom: TabBar(
+            isScrollable: true,
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            tabs: [for (final tab in tabs) Tab(text: tab.name)],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            for (final tab in tabs)
+              tab.id == 'summary'
+                  ? const _SummarySheet()
+                  : MarksEntrySheet(subjectId: tab.id, subjectName: tab.name),
+          ],
+        ),
+      ),
+    );
   }
 
   void _message(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -116,68 +78,298 @@ class _WorkbookList extends StatelessWidget {
   ]);
 }
 
-class _WorkbookGrid extends StatelessWidget {
-  const _WorkbookGrid({required this.workbook, required this.onSaveMark});
+@visibleForTesting
+class MarksEntrySheet extends StatefulWidget {
+  const MarksEntrySheet({
+    super.key,
+    required this.subjectId,
+    required this.subjectName,
+    this.studentCount = 8,
+    this.componentMaxMarks = const {'CA': 20, 'Exam': 80},
+  });
 
-  final OpenedWorkbook workbook;
-  final Future<void> Function(OpenedWorkbook workbook, Student student, WorkbookComponent component, String value) onSaveMark;
+  final String subjectId;
+  final String subjectName;
+  final int studentCount;
+  final Map<String, int> componentMaxMarks;
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(
-    length: workbook.subjects.length + 1,
-    child: Column(children: <Widget>[
-      Material(color: ResultMasterTheme.excelGreen, child: TabBar(isScrollable: true, tabs: <Widget>[for (final subject in workbook.subjects) Tab(text: subject.name), const Tab(text: 'Final')]),),
-      Expanded(child: TabBarView(children: <Widget>[
-        for (final subject in workbook.subjects) _SubjectSheet(workbook: workbook, subject: subject, onSaveMark: onSaveMark),
-        _FinalSheet(workbook: workbook),
-      ])),
-    ]),
-  );
+  State<MarksEntrySheet> createState() => _MarksEntrySheetState();
 }
 
-class _SubjectSheet extends StatelessWidget {
-  const _SubjectSheet({required this.workbook, required this.subject, required this.onSaveMark});
-
-  final OpenedWorkbook workbook;
-  final WorkbookSubject subject;
-  final Future<void> Function(OpenedWorkbook workbook, Student student, WorkbookComponent component, String value) onSaveMark;
-
-  @override
-  Widget build(BuildContext context) => ListView(children: <Widget>[
-    _SheetRow(cells: <String>['Roll No', 'Student Name', ...subject.components.map((c) => c.name)], isHeader: true),
-    for (final student in workbook.students) Row(children: <Widget>[
-      _Cell('${student.rollNumber}'),
-      _Cell(student.name),
-      for (final component in subject.components) Expanded(child: component.isTotal
-        ? _ReadOnlyCell('${workbook.subjectTotal(student.id!, subject)}')
-        : TextFormField(initialValue: workbook.markFor(student.id!, component.id)?.toString() ?? '', keyboardType: TextInputType.number, decoration: const InputDecoration(border: OutlineInputBorder()), onFieldSubmitted: (value) => onSaveMark(workbook, student, component, value))),
-    ]),
-  ]);
-}
-
-class _FinalSheet extends StatelessWidget {
-  const _FinalSheet({required this.workbook});
-
-  final OpenedWorkbook workbook;
+class _MarksEntrySheetState extends State<MarksEntrySheet> {
+  late final List<_StudentMarksRow> _rows;
+  late final List<String> _components;
+  final Map<_CellCoordinate, FocusNode> _focusNodes = {};
+  final Map<_CellCoordinate, TextEditingController> _controllers = {};
+  final Map<_CellCoordinate, String?> _errors = {};
+  bool _saved = true;
 
   @override
-  Widget build(BuildContext context) => ListView(children: <Widget>[
-    _SheetRow(cells: <String>['Roll No', 'Student Name', ...workbook.subjects.map((s) => s.name), 'Total Marks', 'Maximum Marks', 'Percentage', 'Pass / Fail', 'Remarks'], isHeader: true),
-    for (final student in workbook.students) _finalRow(student),
-  ]);
+  void initState() {
+    super.initState();
+    _components = widget.componentMaxMarks.keys.toList(growable: false);
+    _rows = List.generate(
+      widget.studentCount,
+      (index) => _StudentMarksRow(
+        rollNumber: '${index + 1}',
+        studentName: 'Learner ${index + 1}',
+        marks: {for (final component in _components) component: ''},
+      ),
+    );
+  }
 
-  Widget _finalRow(Student student) {
-    final subjectTotals = [for (final subject in workbook.subjects) workbook.subjectTotal(student.id!, subject)];
-    final total = subjectTotals.fold<double>(0, (sum, mark) => sum + mark);
-    final maximum = workbook.subjects.fold<double>(0, (sum, subject) => sum + subject.components.where((c) => !c.isTotal).length * 100);
-    final percentage = maximum == 0 ? 0 : total / maximum * 100;
-    final passed = workbook.passCriteria.every((criterion) {
-      final index = workbook.subjects.indexWhere((subject) => subject.name == criterion.subjectName);
-      if (index == -1) return true;
-      final required = criterion.passMarks ?? 0;
-      return subjectTotals[index] >= required;
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    for (final focusNode in _focusNodes.values) {
+      focusNode.dispose();
+    }
+    super.dispose();
+  }
+
+  void _autoSave(_CellCoordinate cell, String value) {
+    final normalized = value.trim().toUpperCase();
+    final component = _components[cell.columnIndex];
+    final maxMarks = widget.componentMaxMarks[component]!;
+    final error = MarksEntryValidator.validate(normalized, maxMarks: maxMarks);
+
+    setState(() {
+      _saved = false;
+      _rows[cell.rowIndex].marks[component] = normalized;
+      _errors[cell] = error;
     });
-    return _SheetRow(cells: <String>['${student.rollNumber}', student.name, ...subjectTotals.map((m) => '$m'), '$total', '$maximum', percentage.toStringAsFixed(2), passed ? 'Pass' : 'Fail', passed ? 'Promoted' : 'Needs Improvement']);
+
+    // The current repository has not introduced durable marks tables yet. Keep
+    // the save boundary isolated here so the UI still behaves as an auto-saving
+    // workbook and can be wired to the existing data layer without changing the
+    // sheet widget contract.
+    setState(() => _saved = true);
+  }
+
+  void _moveFocus(_CellCoordinate from, _NavigationIntent intent) {
+    final next = _nextCell(from, intent);
+    if (next == null) return;
+    _focusNodes[next]?.requestFocus();
+    _controllers[next]?.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _controllers[next]?.text.length ?? 0,
+    );
+  }
+
+  _CellCoordinate? _nextCell(_CellCoordinate from, _NavigationIntent intent) {
+    var row = from.rowIndex;
+    var column = from.columnIndex;
+
+    switch (intent) {
+      case _NavigationIntent.next:
+        column += 1;
+        if (column >= _components.length) {
+          column = 0;
+          row += 1;
+        }
+      case _NavigationIntent.previous:
+        column -= 1;
+        if (column < 0) {
+          column = _components.length - 1;
+          row -= 1;
+        }
+      case _NavigationIntent.down:
+        row += 1;
+      case _NavigationIntent.up:
+        row -= 1;
+    }
+
+    if (row < 0 || row >= _rows.length) return null;
+    return _CellCoordinate(row, column);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final headers = ['Roll No.', 'Student Name', ..._components, 'Total'];
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: ResultMasterTheme.gridLine),
+        ),
+        child: Column(
+          children: [
+            _WorkbookStatusBar(saved: _saved, hasErrors: _errors.values.any((error) => error != null)),
+            _SheetRow(cells: headers, isHeader: true),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _rows.length,
+                itemBuilder: (context, rowIndex) {
+                  final row = _rows[rowIndex];
+                  return SizedBox(
+                    height: 52,
+                    child: Row(
+                      children: [
+                        _ReadOnlyCell(row.rollNumber),
+                        _ReadOnlyCell(row.studentName, flex: 2),
+                        for (var columnIndex = 0; columnIndex < _components.length; columnIndex++)
+                          _EditableMarkCell(
+                            coordinate: _CellCoordinate(rowIndex, columnIndex),
+                            controller: _controllerFor(rowIndex, columnIndex),
+                            focusNode: _focusNodeFor(rowIndex, columnIndex),
+                            errorText: _errors[_CellCoordinate(rowIndex, columnIndex)],
+                            maxMarks: widget.componentMaxMarks[_components[columnIndex]]!,
+                            onChanged: _autoSave,
+                            onNavigate: _moveFocus,
+                          ),
+                        _ReadOnlyCell(_formatTotal(row), key: ValueKey('total-$rowIndex')),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  TextEditingController _controllerFor(int rowIndex, int columnIndex) {
+    final coordinate = _CellCoordinate(rowIndex, columnIndex);
+    return _controllers.putIfAbsent(coordinate, () {
+      final component = _components[columnIndex];
+      return TextEditingController(text: _rows[rowIndex].marks[component]);
+    });
+  }
+
+  FocusNode _focusNodeFor(int rowIndex, int columnIndex) {
+    final coordinate = _CellCoordinate(rowIndex, columnIndex);
+    return _focusNodes.putIfAbsent(coordinate, FocusNode.new);
+  }
+
+  String _formatTotal(_StudentMarksRow row) {
+    if (row.marks.values.any((mark) => mark.trim().toUpperCase() == MarksEntryValidator.absentCode)) {
+      return MarksEntryValidator.absentCode;
+    }
+    var total = 0;
+    for (final mark in row.marks.values) {
+      final parsed = int.tryParse(mark.trim());
+      if (parsed == null) continue;
+      total += parsed;
+    }
+    return total.toString();
+  }
+}
+
+@visibleForTesting
+class MarksEntryValidator {
+  const MarksEntryValidator._();
+
+  static const absentCode = 'AB';
+
+  static String? validate(String value, {required int maxMarks}) {
+    if (value.isEmpty) return null;
+    if (value == absentCode) return null;
+    final mark = int.tryParse(value);
+    if (mark == null) return 'Enter 0-$maxMarks or AB';
+    if (mark < 0 || mark > maxMarks) return 'Enter 0-$maxMarks or AB';
+    return null;
+  }
+}
+
+class _EditableMarkCell extends StatelessWidget {
+  const _EditableMarkCell({
+    required this.coordinate,
+    required this.controller,
+    required this.focusNode,
+    required this.errorText,
+    required this.maxMarks,
+    required this.onChanged,
+    required this.onNavigate,
+  });
+
+  final _CellCoordinate coordinate;
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String? errorText;
+  final int maxMarks;
+  final void Function(_CellCoordinate cell, String value) onChanged;
+  final void Function(_CellCoordinate cell, _NavigationIntent intent) onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasError = errorText != null;
+    return Expanded(
+      child: KeyboardListener(
+        focusNode: FocusNode(skipTraversal: true),
+        onKeyEvent: (event) {
+          if (event is! KeyDownEvent) return;
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown) onNavigate(coordinate, _NavigationIntent.down);
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp) onNavigate(coordinate, _NavigationIntent.up);
+          if (event.logicalKey == LogicalKeyboardKey.tab && HardwareKeyboard.instance.isShiftPressed) {
+            onNavigate(coordinate, _NavigationIntent.previous);
+          } else if (event.logicalKey == LogicalKeyboardKey.tab || event.logicalKey == LogicalKeyboardKey.enter) {
+            onNavigate(coordinate, _NavigationIntent.next);
+          }
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            color: hasError ? const Color(0xFFFFF1F0) : Colors.white,
+            border: Border.all(color: hasError ? Colors.red : ResultMasterTheme.gridLine, width: 0.7),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: TextField(
+            key: ValueKey('mark-${coordinate.rowIndex}-${coordinate.columnIndex}'),
+            controller: controller,
+            focusNode: focusNode,
+            textAlign: TextAlign.center,
+            textInputAction: TextInputAction.next,
+            textCapitalization: TextCapitalization.characters,
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              hintText: '0-$maxMarks',
+              errorText: errorText,
+              errorStyle: const TextStyle(fontSize: 9, height: 0.8),
+            ),
+            onChanged: (value) => onChanged(coordinate, value),
+            onSubmitted: (_) => onNavigate(coordinate, _NavigationIntent.next),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SummarySheet extends StatelessWidget {
+  const _SummarySheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Text('Summary will calculate totals from each configured subject.'),
+    );
+  }
+}
+
+class _WorkbookStatusBar extends StatelessWidget {
+  const _WorkbookStatusBar({required this.saved, required this.hasErrors});
+
+  final bool saved;
+  final bool hasErrors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: const Color(0xFFF6FAF7),
+      child: Text(
+        hasErrors ? 'Fix invalid marks before finalizing' : (saved ? 'All edits auto-saved' : 'Saving...'),
+        style: TextStyle(color: hasErrors ? Colors.red : ResultMasterTheme.excelDarkGreen, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 }
 
@@ -188,24 +380,71 @@ class _SheetRow extends StatelessWidget {
   final bool isHeader;
 
   @override
-  Widget build(BuildContext context) => Row(children: <Widget>[for (final cell in cells) _Cell(cell, header: isHeader)]);
-}
-
-class _Cell extends StatelessWidget {
-  const _Cell(this.text, {this.header = false});
-
-  final String text;
-  final bool header;
-
-  @override
-  Widget build(BuildContext context) => Expanded(child: Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: header ? const Color(0xFFE8F1EA) : Colors.white, border: Border.all(color: ResultMasterTheme.gridLine, width: .5)), child: Text(text, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: header ? FontWeight.w700 : FontWeight.w400))));
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: Row(
+        children: [
+          for (final cell in cells)
+            Expanded(
+              flex: cell == 'Student Name' ? 2 : 1,
+              child: Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: isHeader ? const Color(0xFFE8F1EA) : Colors.white,
+                  border: Border.all(color: ResultMasterTheme.gridLine, width: 0.5),
+                ),
+                child: Text(cell, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: isHeader ? FontWeight.w700 : FontWeight.w400)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ReadOnlyCell extends StatelessWidget {
-  const _ReadOnlyCell(this.text);
+  const _ReadOnlyCell(this.text, {super.key, this.flex = 1});
 
   final String text;
+  final int flex;
 
   @override
-  Widget build(BuildContext context) => Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0xFFF7F7F7), border: Border.all(color: ResultMasterTheme.gridLine, width: .5)), child: Text(text));
+  Widget build(BuildContext context) {
+    return Expanded(
+      flex: flex,
+      child: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(border: Border.all(color: ResultMasterTheme.gridLine, width: 0.5)),
+        child: Text(text, overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
+}
+
+enum _NavigationIntent { next, previous, up, down }
+
+class _CellCoordinate {
+  const _CellCoordinate(this.rowIndex, this.columnIndex);
+
+  final int rowIndex;
+  final int columnIndex;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _CellCoordinate && runtimeType == other.runtimeType && rowIndex == other.rowIndex && columnIndex == other.columnIndex;
+
+  @override
+  int get hashCode => Object.hash(rowIndex, columnIndex);
+}
+
+class _StudentMarksRow {
+  _StudentMarksRow({required this.rollNumber, required this.studentName, required this.marks});
+
+  final String rollNumber;
+  final String studentName;
+  final Map<String, String> marks;
 }

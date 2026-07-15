@@ -113,7 +113,15 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
       var tabOrder = 0;
       for (var subjectIndex = 0; subjectIndex < draft.subjects.length; subjectIndex++) {
         final subject = draft.subjects[subjectIndex];
-        final subjectId = await txn.insert('workbook_subjects', <String, Object?>{'workbook_id': id, 'subject_name': subject.name, 'display_order': subjectIndex});
+        final subjectId = await txn.insert('workbook_subjects', <String, Object?>{
+          'workbook_id': id,
+          'subject_name': subject.name,
+          'display_order': subjectIndex,
+          'maximum_marks': subject.maximumMarks,
+          'passing_marks': subject.passingMarks,
+          'include_in_percentage': subject.includeInPercentage ? 1 : 0,
+          'include_in_pass_fail': subject.includeInPassFail ? 1 : 0,
+        });
         for (var componentIndex = 0; componentIndex < subject.components.length; componentIndex++) {
           await txn.insert('subject_components', <String, Object?>{'subject_id': subjectId, 'component_name': subject.components[componentIndex].name, 'display_order': componentIndex, 'is_total': 0, 'is_editable': 1});
         }
