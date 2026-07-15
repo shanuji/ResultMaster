@@ -12,10 +12,21 @@ class AppDatabase {
     final dbPath = await getDatabasesPath();
     _database = await openDatabase(
       p.join(dbPath, 'result_master.db'),
-      version: 1,
+      version: 2,
       onCreate: _create,
+      onUpgrade: _upgrade,
     );
     return _database!;
+  }
+
+
+  Future<void> _upgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE workbook_subjects ADD COLUMN maximum_marks REAL NOT NULL DEFAULT 100');
+      await db.execute('ALTER TABLE workbook_subjects ADD COLUMN passing_marks REAL NOT NULL DEFAULT 33');
+      await db.execute('ALTER TABLE workbook_subjects ADD COLUMN include_in_percentage INTEGER NOT NULL DEFAULT 1');
+      await db.execute('ALTER TABLE workbook_subjects ADD COLUMN include_in_pass_fail INTEGER NOT NULL DEFAULT 1');
+    }
   }
 
   Future<void> _create(Database db, int version) async {
@@ -67,6 +78,10 @@ class AppDatabase {
         workbook_id INTEGER NOT NULL,
         subject_name TEXT NOT NULL,
         display_order INTEGER NOT NULL,
+        maximum_marks REAL NOT NULL DEFAULT 100,
+        passing_marks REAL NOT NULL DEFAULT 33,
+        include_in_percentage INTEGER NOT NULL DEFAULT 1,
+        include_in_pass_fail INTEGER NOT NULL DEFAULT 1,
         FOREIGN KEY(workbook_id) REFERENCES workbooks(id)
       )
     ''');

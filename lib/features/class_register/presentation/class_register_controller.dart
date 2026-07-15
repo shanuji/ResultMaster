@@ -73,6 +73,14 @@ class ClassRegisterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<ImportSummary> importStudents(List<Student> imported, {ImportMode mode = ImportMode.replace}) async {
+    final current = selected!;
+    final summary = await _service.importStudents(current.id, imported, mode: mode);
+    await refreshStudents();
+    notifyListeners();
+    return summary;
+  }
+
   Future<void> deleteStudent(Student student) async {
     await _service.deleteStudent(student.id!);
     await refreshStudents();
