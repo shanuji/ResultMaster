@@ -44,7 +44,11 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS subjects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
-                sort_order INTEGER NOT NULL
+                sort_order INTEGER NOT NULL,
+                maximum_marks REAL NOT NULL DEFAULT 100,
+                passing_marks REAL NOT NULL DEFAULT 33,
+                include_in_pass_fail INTEGER NOT NULL DEFAULT 1,
+                include_in_percentage INTEGER NOT NULL DEFAULT 1
             );
             CREATE TABLE IF NOT EXISTS students (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,9 +69,17 @@ def init_db() -> None:
             "INSERT OR IGNORE INTO workbook (id, pass_marks, max_marks, remark_rules) VALUES (1, 33, 100, ?)",
             (json.dumps(DEFAULT_REMARK_RULES),),
         )
+        for column, definition in {
+            "maximum_marks": "REAL NOT NULL DEFAULT 100",
+            "passing_marks": "REAL NOT NULL DEFAULT 33",
+            "include_in_pass_fail": "INTEGER NOT NULL DEFAULT 1",
+            "include_in_percentage": "INTEGER NOT NULL DEFAULT 1",
+        }.items():
+            if column not in [row[1] for row in con.execute("PRAGMA table_info(subjects)")]:
+                con.execute(f"ALTER TABLE subjects ADD COLUMN {column} {definition}")
         if con.execute("SELECT COUNT(*) FROM subjects").fetchone()[0] == 0:
             con.executemany(
-                "INSERT INTO subjects (name, sort_order) VALUES (?, ?)",
+                "INSERT INTO subjects (name, sort_order, maximum_marks, passing_marks, include_in_pass_fail, include_in_percentage) VALUES (?, ?, 100, 33, 1, 1)",
                 [(name, i) for i, name in enumerate(DEFAULT_SUBJECTS)],
             )
         if con.execute("SELECT COUNT(*) FROM students").fetchone()[0] == 0:
@@ -92,7 +104,7 @@ def workbook_payload() -> dict:
         ensure_mark_rows(con)
         settings = dict(con.execute("SELECT * FROM workbook WHERE id = 1").fetchone())
         settings["remark_rules"] = json.loads(settings["remark_rules"])
-        subjects = [dict(r) for r in con.execute("SELECT id, name FROM subjects ORDER BY sort_order, id")]
+        subjects = [dict(r) for r in con.execute("SELECT id, name, maximum_marks, passing_marks, include_in_pass_fail, include_in_percentage FROM subjects ORDER BY sort_order, id")]
         students = [dict(r) for r in con.execute("SELECT id, roll_no, name FROM students ORDER BY CAST(roll_no AS INTEGER), roll_no")]
         marks = [dict(r) for r in con.execute("SELECT student_id, subject_id, marks FROM marks")]
     return {"settings": settings, "subjects": subjects, "students": students, "marks": marks}
@@ -101,15 +113,15 @@ def workbook_payload() -> dict:
 def calculate_summary(payload: dict) -> list[dict]:
     subjects = payload["subjects"]
     settings = payload["settings"]
-    max_total = len(subjects) * float(settings["max_marks"] or 0)
+    max_total = sum(float(s.get("maximum_marks") or settings["max_marks"] or 0) for s in subjects if int(s.get("include_in_percentage", 1)))
     mark_map = {(m["student_id"], m["subject_id"]): float(m["marks"] or 0) for m in payload["marks"]}
     rows = []
     for idx, student in enumerate(payload["students"], start=1):
         subject_totals = {s["name"]: mark_map.get((student["id"], s["id"]), 0) for s in subjects}
-        grand_total = sum(subject_totals.values())
+        grand_total = sum(subject_totals[s["name"]] for s in subjects if int(s.get("include_in_percentage", 1)))
         percentage = round((grand_total / max_total * 100) if max_total else 0, 2)
-        passed = all(subject_totals[s["name"]] >= float(settings["pass_marks"]) for s in subjects)
-        rows.append({"sno": idx, "roll_no": student["roll_no"], "student_name": student["name"], "subjects": subject_totals, "grand_total": grand_total, "percentage": percentage, "result": "PASS" if passed else "FAIL", "rank": 0, "remarks": remark_for(percentage, settings["remark_rules"])})
+        passed = all(subject_totals[s["name"]] >= float(s.get("passing_marks") or settings["pass_marks"] or 0) for s in subjects if int(s.get("include_in_pass_fail", 1)))
+        rows.append({"student_id": student["id"], "sno": idx, "roll_no": student["roll_no"], "student_name": student["name"], "subjects": subject_totals, "grand_total": grand_total, "maximum_marks": max_total, "percentage": percentage, "result": "PASS" if passed else "FAIL", "rank": 0, "remarks": remark_for(percentage, settings["remark_rules"])})
     ranked = sorted(rows, key=lambda r: (-r["grand_total"], r["student_name"]))
     previous_total = None
     previous_rank = 0
@@ -131,10 +143,10 @@ def remark_for(percentage: float, rules: list[dict]) -> str:
 def xlsx_bytes() -> bytes:
     payload = workbook_payload()
     rows = calculate_summary(payload)
-    headers = ["S.No.", "Roll No.", "Student Name", *[s["name"] for s in payload["subjects"]], "Grand Total", "Percentage", "Result", "Rank", "Remarks"]
+    headers = ["S.No.", "Roll No.", "Student Name", *[s["name"] for s in payload["subjects"]], "Total Marks", "Maximum Marks", "Percentage", "Pass / Fail", "Rank", "Remarks"]
     table = [headers]
     for r in rows:
-        table.append([r["sno"], r["roll_no"], r["student_name"], *[r["subjects"][s["name"]] for s in payload["subjects"]], r["grand_total"], r["percentage"], r["result"], r["rank"], r["remarks"]])
+        table.append([r["sno"], r["roll_no"], r["student_name"], *[r["subjects"][s["name"]] for s in payload["subjects"]], r["grand_total"], r["maximum_marks"], r["percentage"], r["result"], r["rank"], r["remarks"]])
     sheet_rows = []
     for ridx, row in enumerate(table, 1):
         cells = []
@@ -188,13 +200,29 @@ class Handler(SimpleHTTPRequestHandler):
         data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         with db() as con:
             if path == "/api/marks":
-                con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (data["student_id"], data["subject_id"], data["marks"]))
+                subject = con.execute("SELECT maximum_marks FROM subjects WHERE id = ?", (data["subject_id"],)).fetchone()
+                if subject is None:
+                    self.error_json(400, "Invalid subject")
+                    return
+                marks = float(data["marks"] or 0)
+                if marks < 0 or marks > float(subject["maximum_marks"]):
+                    self.error_json(400, "Marks must be between 0 and the subject maximum")
+                    return
+                con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (data["student_id"], data["subject_id"], marks))
             elif path == "/api/settings":
                 con.execute("UPDATE workbook SET pass_marks = ?, max_marks = ?, remark_rules = ? WHERE id = 1", (data["pass_marks"], data["max_marks"], json.dumps(data["remark_rules"])))
             else:
                 self.send_error(404)
                 return
         self.json(workbook_payload())
+
+    def error_json(self, status: int, message: str) -> None:
+        data = json.dumps({"error": message}).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def json(self, obj: dict) -> None:
         data = json.dumps(obj).encode()
