@@ -9,9 +9,10 @@ class Student {
 }
 
 class AssessmentComponent {
-  const AssessmentComponent({required this.name});
+  const AssessmentComponent({required this.name, this.maximumMarks = 0});
 
   final String name;
+  final double maximumMarks;
 }
 
 class SubjectConfig {
@@ -31,6 +32,7 @@ class SubjectConfig {
   final bool includeInPercentage;
   final bool includeInPassFail;
 }
+
 
 class PassCriterion {
   const PassCriterion({
