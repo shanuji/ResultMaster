@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'core/navigation/app_router.dart';
-import 'core/theme/app_theme.dart';
+import 'app/router/app_router.dart';
+import 'app/theme/result_master_theme.dart';
 
 class ResultMasterApp extends ConsumerWidget {
   const ResultMasterApp({super.key});
@@ -14,7 +14,8 @@ class ResultMasterApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'ResultMaster',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
+      theme: ResultMasterTheme.light(),
+      darkTheme: ResultMasterTheme.dark(),
       routerConfig: router,
     );
   }

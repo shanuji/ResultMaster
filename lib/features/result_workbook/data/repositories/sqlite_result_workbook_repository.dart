@@ -14,15 +14,15 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
   Future<List<Student>> getClassRegisterStudents(int classRegisterId) async {
     final db = await _database.database;
     final rows = await db.query(
-      'class_register_students',
+      'students',
       where: 'register_id = ?',
       whereArgs: <Object?>[classRegisterId],
       orderBy: 'roll_number ASC',
     );
     return rows
         .map((row) => Student(
-              rollNumber: row['roll_number'] as int,
-              name: row['student_name'] as String,
+              rollNumber: int.tryParse(row['roll_number'].toString()) ?? 0,
+              name: row['name'] as String,
             ))
         .toList();
   }
@@ -97,15 +97,15 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
 
   Future<List<Student>> _registerStudents(Transaction txn, int registerId) async {
     final rows = await txn.query(
-      'class_register_students',
+      'students',
       where: 'register_id = ?',
       whereArgs: <Object?>[registerId],
       orderBy: 'roll_number ASC',
     );
     return rows
         .map((row) => Student(
-              rollNumber: row['roll_number'] as int,
-              name: row['student_name'] as String,
+              rollNumber: int.tryParse(row['roll_number'].toString()) ?? 0,
+              name: row['name'] as String,
             ))
         .toList();
   }
