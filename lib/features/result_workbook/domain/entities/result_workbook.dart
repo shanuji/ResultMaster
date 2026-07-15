@@ -14,10 +14,21 @@ class AssessmentComponent {
 }
 
 class SubjectConfig {
-  const SubjectConfig({required this.name, required this.components});
+  const SubjectConfig({
+    required this.name,
+    required this.components,
+    this.maximumMarks = 100,
+    this.passingMarks = 33,
+    this.includeInPercentage = true,
+    this.includeInPassFail = true,
+  });
 
   final String name;
   final List<AssessmentComponent> components;
+  final double maximumMarks;
+  final double passingMarks;
+  final bool includeInPercentage;
+  final bool includeInPassFail;
 }
 
 class PassCriterion {
