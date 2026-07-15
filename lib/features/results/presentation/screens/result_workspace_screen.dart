@@ -3,9 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/result_master_theme.dart';
-import '../providers/subject_tabs_provider.dart';
+import '../../../result_workbook/data/repositories/sqlite_result_workbook_repository.dart';
+import '../../../result_workbook/domain/entities/result_workbook.dart';
 
-class ResultWorkspaceScreen extends ConsumerWidget {
+class ResultWorkspaceScreen extends StatefulWidget {
   const ResultWorkspaceScreen({super.key});
 
   static const routeName = 'result-workspace';
@@ -39,6 +40,42 @@ class ResultWorkspaceScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _message(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Result Workbooks'), actions: <Widget>[IconButton(onPressed: _loadWorkbooks, icon: const Icon(Icons.refresh), tooltip: 'Refresh')]),
+    body: Row(children: <Widget>[
+      SizedBox(width: 320, child: _loading ? const Center(child: CircularProgressIndicator()) : _WorkbookList(workbooks: _workbooks, selectedId: _opened?.summary.id, onOpen: _open, onRename: _rename, onDelete: _delete)),
+      const VerticalDivider(width: 1),
+      Expanded(child: _opened == null ? const Center(child: Text('Open a workbook, or create one from the New Result wizard.')) : _WorkbookGrid(workbook: _opened!, onSaveMark: _saveMark)),
+    ]),
+  );
+}
+
+class _WorkbookList extends StatelessWidget {
+  const _WorkbookList({required this.workbooks, required this.selectedId, required this.onOpen, required this.onRename, required this.onDelete});
+
+  final List<WorkbookSummary> workbooks;
+  final int? selectedId;
+  final ValueChanged<WorkbookSummary> onOpen;
+  final ValueChanged<WorkbookSummary> onRename;
+  final ValueChanged<WorkbookSummary> onDelete;
+
+  @override
+  Widget build(BuildContext context) => ListView(children: <Widget>[
+    for (final workbook in workbooks) ListTile(
+      selected: workbook.id == selectedId,
+      title: Text(workbook.title),
+      subtitle: Text('${workbook.studentCount} students • ${workbook.subjectCount} subjects'),
+      onTap: () => onOpen(workbook),
+      trailing: PopupMenuButton<String>(itemBuilder: (context) => const <PopupMenuEntry<String>>[
+        PopupMenuItem(value: 'rename', child: Text('Rename')),
+        PopupMenuItem(value: 'delete', child: Text('Delete')),
+      ], onSelected: (value) => value == 'rename' ? onRename(workbook) : onDelete(workbook)),
+    ),
+  ]);
 }
 
 @visibleForTesting
