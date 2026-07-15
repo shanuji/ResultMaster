@@ -89,10 +89,141 @@ class _ClassRegisterScreenState extends State<ClassRegisterScreen> {
     await _run(() => student == null ? controller.addStudent(roll.text, name.text) : controller.updateStudent(student, roll.text, name.text));
   }
 
+  Future<void> _importExcel() async {
+    final selectedRegister = controller.selected;
+    if (selectedRegister == null) return;
+    await _run(() async {
+      final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx']);
+      final path = result?.files.single.path;
+      if (path == null) return;
+
+      final codec = ExcelRegisterCodec();
+      final workbook = await codec.inspectFile(File(path));
+      if (!mounted) return;
+      final config = await showDialog<_ImportConfig>(
+        context: context,
+        builder: (_) => _ImportMappingDialog(workbook: workbook),
+      );
+      if (config == null) return;
+
+      final preview = await codec.previewImport(
+        file: workbook.file,
+        sheetName: config.sheet.name,
+        rollNumberColumn: config.rollNumberColumn.index,
+        studentNameColumn: config.studentNameColumn.index,
+        registerId: selectedRegister.id,
+      );
+      final summary = await controller.importStudents(
+        preview.students,
+        mode: config.mode,
+        skipped: preview.skipped,
+        duplicateRollNumbers: preview.duplicateRollNumbers,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Import Summary'),
+          content: Text(
+            'Imported: ${summary.imported}\n'
+            'Skipped: ${summary.skipped}\n'
+            'Duplicates: ${summary.duplicates}'
+            '${summary.duplicateRollNumbers.isEmpty ? '' : '\n\nDuplicate Roll Numbers: ${summary.duplicateRollNumbers.join(', ')}'}',
+          ),
+          actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        ),
+      );
+    });
+  }
+
   Future<void> _run(Future<void> Function() action) async {
     try { await action(); } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error'))); }
   }
 }
+
+class _ImportConfig {
+  const _ImportConfig({required this.sheet, required this.rollNumberColumn, required this.studentNameColumn, required this.mode});
+  final ExcelRegisterSheet sheet;
+  final ExcelRegisterColumn rollNumberColumn;
+  final ExcelRegisterColumn studentNameColumn;
+  final ClassRegisterImportMode mode;
+}
+
+class _ImportMappingDialog extends StatefulWidget {
+  const _ImportMappingDialog({required this.workbook});
+  final ExcelRegisterWorkbook workbook;
+
+  @override
+  State<_ImportMappingDialog> createState() => _ImportMappingDialogState();
+}
+
+class _ImportMappingDialogState extends State<_ImportMappingDialog> {
+  late ExcelRegisterSheet sheet = widget.workbook.sheets.first;
+  late ExcelRegisterColumn rollColumn = _preferredColumn('Roll Number') ?? sheet.columns.first;
+  late ExcelRegisterColumn nameColumn = _preferredColumn('Student Name') ?? (sheet.columns.length > 1 ? sheet.columns[1] : sheet.columns.first);
+  ClassRegisterImportMode mode = ClassRegisterImportMode.append;
+
+  ExcelRegisterColumn? _preferredColumn(String header) {
+    for (final column in sheet.columns) {
+      if (column.header.toLowerCase() == header.toLowerCase()) return column;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Import Students from Excel'),
+        content: SizedBox(
+          width: 420,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<ExcelRegisterSheet>(
+              value: sheet,
+              decoration: const InputDecoration(labelText: 'Worksheet'),
+              items: [for (final item in widget.workbook.sheets) DropdownMenuItem(value: item, child: Text(item.name))],
+              onChanged: (value) => setState(() {
+                sheet = value!;
+                rollColumn = _preferredColumn('Roll Number') ?? sheet.columns.first;
+                nameColumn = _preferredColumn('Student Name') ?? (sheet.columns.length > 1 ? sheet.columns[1] : sheet.columns.first);
+              }),
+            ),
+            DropdownButtonFormField<ExcelRegisterColumn>(
+              value: rollColumn,
+              decoration: const InputDecoration(labelText: 'Roll Number column'),
+              items: [for (final column in sheet.columns) DropdownMenuItem(value: column, child: Text(column.label))],
+              onChanged: (value) => setState(() => rollColumn = value!),
+            ),
+            DropdownButtonFormField<ExcelRegisterColumn>(
+              value: nameColumn,
+              decoration: const InputDecoration(labelText: 'Student Name column'),
+              items: [for (final column in sheet.columns) DropdownMenuItem(value: column, child: Text(column.label))],
+              onChanged: (value) => setState(() => nameColumn = value!),
+            ),
+            RadioListTile<ClassRegisterImportMode>(
+              value: ClassRegisterImportMode.append,
+              groupValue: mode,
+              onChanged: (value) => setState(() => mode = value!),
+              title: const Text('Append'),
+              contentPadding: EdgeInsets.zero,
+            ),
+            RadioListTile<ClassRegisterImportMode>(
+              value: ClassRegisterImportMode.replaceExisting,
+              groupValue: mode,
+              onChanged: (value) => setState(() => mode = value!),
+              title: const Text('Replace Existing'),
+              contentPadding: EdgeInsets.zero,
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: rollColumn.index == nameColumn.index ? null : () => Navigator.pop(context, _ImportConfig(sheet: sheet, rollNumberColumn: rollColumn, studentNameColumn: nameColumn, mode: mode)),
+            child: const Text('Import'),
+          ),
+        ],
+      );
+}
+
 
 class _RegisterList extends StatelessWidget {
   const _RegisterList({required this.controller});

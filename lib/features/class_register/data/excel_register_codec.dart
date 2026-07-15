@@ -41,6 +41,58 @@ class ExcelRegisterCodec {
     await file.writeAsBytes(workbook.encode()!, flush: true);
     return file;
   }
+
+  List<ExcelRegisterColumn> _columnsFor(Sheet sheet) {
+    if (sheet.rows.isEmpty) return const <ExcelRegisterColumn>[];
+    final headerRow = sheet.rows.first;
+    final width = sheet.maxColumns > headerRow.length ? sheet.maxColumns : headerRow.length;
+    return List.generate(width, (index) {
+      final header = _valueAt(headerRow, index);
+      return ExcelRegisterColumn(index: index, header: header.isEmpty ? 'Column ${index + 1}' : header);
+    }, growable: false);
+  }
+
+  bool _isBlankRow(List<Data?> row) => row.every((cell) => (cell?.value.toString().trim() ?? '').isEmpty);
+
+  String _valueAt(List<Data?> row, int index) => index < row.length ? row[index]?.value.toString().trim() ?? '' : '';
+}
+
+class ExcelRegisterWorkbook {
+  const ExcelRegisterWorkbook({required this.file, required this.sheets});
+
+  final File file;
+  final List<ExcelRegisterSheet> sheets;
+}
+
+class ExcelRegisterSheet {
+  const ExcelRegisterSheet({required this.name, required this.columns});
+
+  final String name;
+  final List<ExcelRegisterColumn> columns;
+}
+
+class ExcelRegisterColumn {
+  const ExcelRegisterColumn({required this.index, required this.header});
+
+  final int index;
+  final String header;
+
+  String get label => '${index + 1}. $header';
+}
+
+class ExcelRegisterImportPreview {
+  const ExcelRegisterImportPreview({
+    required this.students,
+    required this.skipped,
+    required this.duplicateRollNumbers,
+  });
+
+  final List<Student> students;
+  final int skipped;
+  final List<String> duplicateRollNumbers;
+
+  int get imported => students.length;
+  int get duplicates => duplicateRollNumbers.length;
 }
 
 class ExcelRegisterWorkbook {
