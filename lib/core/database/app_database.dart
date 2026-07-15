@@ -31,23 +31,27 @@ class AppDatabase {
 
   Future<void> _create(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE class_registers (
+      CREATE TABLE class_registers(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        academic_year TEXT NOT NULL,
-        class_name TEXT NOT NULL,
-        section TEXT NOT NULL,
-        name TEXT NOT NULL
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       )
     ''');
     await db.execute('''
-      CREATE TABLE class_register_students (
+      CREATE TABLE students(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         register_id INTEGER NOT NULL,
-        roll_number INTEGER NOT NULL,
-        student_name TEXT NOT NULL,
-        FOREIGN KEY(register_id) REFERENCES class_registers(id)
+        roll_number TEXT NOT NULL,
+        name TEXT NOT NULL,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(register_id) REFERENCES class_registers(id) ON DELETE CASCADE,
+        UNIQUE(register_id, roll_number COLLATE NOCASE)
       )
     ''');
+    await db.execute('CREATE INDEX students_register_search_idx ON students(register_id, roll_number, name)');
     await db.execute('''
       CREATE TABLE workbooks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

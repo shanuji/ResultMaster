@@ -2,10 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../class_register/application/class_register_service.dart';
 import '../../class_register/presentation/class_register_screen.dart';
+import '../../result_workbook/domain/usecases/create_result_workbook.dart';
+import '../../result_workbook/presentation/pages/new_result_wizard_page.dart';
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key, required this.classRegisterService});
+  const DashboardScreen({
+    super.key,
+    required this.classRegisterService,
+    required this.createWorkbook,
+  });
+
   final ClassRegisterService classRegisterService;
+  final CreateResultWorkbook createWorkbook;
 
   @override
   Widget build(BuildContext context) {
@@ -17,6 +25,15 @@ class DashboardScreen extends StatelessWidget {
         mainAxisSpacing: 16,
         crossAxisSpacing: 16,
         children: [
+          _DashboardTile(
+            title: 'New Result',
+            icon: Icons.add_chart,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => NewResultWizardPage(createWorkbook: createWorkbook),
+              ),
+            ),
+          ),
           _DashboardTile(
             title: 'Class Registers',
             icon: Icons.table_chart_outlined,
