@@ -1,9 +1,13 @@
 let state = null;
+let dashboard = null;
 let summaryRows = [];
+const DEFAULT_SCORE_BANDS = [{min:90,label:"A+"},{min:75,label:"A"},{min:60,label:"B"},{min:40,label:"C"},{min:0,label:"D"}];
 const $ = (selector) => document.querySelector(selector);
 
 async function loadWorkbook() {
   state = await fetch('/api/workbook').then(r => r.json());
+  dashboard = await fetch('/api/dashboard').then(r => r.json());
+  renderDashboard();
   renderMarks();
   renderSettings();
   calculateAndRenderSummary();
@@ -47,13 +51,15 @@ async function onMarkChange(event) {
 }
 
 function calculateSummary() {
-  const maxTotal = state.subjects.length * Number(state.settings.max_marks || 0);
+  const percentageSubjects = state.subjects.filter(subject => Number(subject.include_percentage));
+  const passFailSubjects = state.subjects.filter(subject => Number(subject.include_pass_fail));
+  const maxTotal = percentageSubjects.length * Number(state.settings.max_marks || 0);
   const rows = state.students.map((student, idx) => {
     const subjects = Object.fromEntries(state.subjects.map(subject => [subject.name, Number(markValue(student.id, subject.id) || 0)]));
-    const grand_total = Object.values(subjects).reduce((a, b) => a + b, 0);
+    const grand_total = percentageSubjects.reduce((sum, subject) => sum + subjects[subject.name], 0);
     const percentage = maxTotal ? Math.round((grand_total / maxTotal * 100) * 100) / 100 : 0;
-    const result = Object.values(subjects).every(v => v >= Number(state.settings.pass_marks)) ? 'PASS' : 'FAIL';
-    return {student_id: student.id, sno: idx + 1, roll_no: student.roll_no, student_name: student.name, subjects, grand_total, percentage, result, rank: 0, remarks: remarkFor(percentage)};
+    const result = passFailSubjects.every(subject => subjects[subject.name] >= Number(state.settings.pass_marks)) ? 'PASS' : 'FAIL';
+    return {student_id: student.id, sno: idx + 1, roll_no: student.roll_no, student_name: student.name, subjects, grand_total, percentage, result, rank: 0, remarks: remarkFor(percentage), score_band: scoreBandFor(percentage)};
   });
   [...rows].sort((a,b) => b.grand_total - a.grand_total || a.student_name.localeCompare(b.student_name)).forEach((row, index, sorted) => {
     row.rank = index && row.grand_total === sorted[index - 1].grand_total ? sorted[index - 1].rank : index + 1;
@@ -63,6 +69,25 @@ function calculateSummary() {
 
 function remarkFor(percentage) {
   return [...state.settings.remark_rules].sort((a,b) => Number(b.min) - Number(a.min)).find(rule => percentage >= Number(rule.min))?.remark || '';
+}
+
+function scoreBandFor(percentage) {
+  return [...(state.settings.score_bands || DEFAULT_SCORE_BANDS)].sort((a,b) => Number(b.min) - Number(a.min)).find(band => percentage >= Number(band.min))?.label || '';
+}
+
+function renderDashboard() {
+  const query = ($('#dashboard-search')?.value || '').toLowerCase();
+  const status = $('#dashboard-status')?.value || '';
+  const container = $('#dashboard-groups');
+  if (!container || !dashboard) return;
+  container.innerHTML = dashboard.groups.map(group => {
+    const exams = group.examinations.map(exam => {
+      const cards = exam.workbooks.filter(w => (!query || `${w.class_name} ${w.examination_name}`.toLowerCase().includes(query)) && (!status || w.status === status));
+      if (!cards.length) return '';
+      return `<article class="exam-group"><h3>${exam.examination_name}</h3><div class="workbook-cards">${cards.map(w => `<div class="workbook-card"><div><strong>${w.class_name}-${w.section}</strong><span>${w.academic_year}</span></div><span class="status-pill ${w.status.toLowerCase().replaceAll(' ','-')}">${w.status}</span><progress max="100" value="${w.progress}"></progress><div>${w.progress.toFixed(2)}% complete · ${w.student_count} students · ${w.subject_count} subjects</div></div>`).join('')}</div></article>`;
+    }).join('');
+    return exams ? `<section class="class-group"><h2>${group.class_name}</h2>${exams}</section>` : '';
+  }).join('') || '<p class="empty">No workbooks match the current filters.</p>';
 }
 
 function calculateAndRenderSummary() {
@@ -78,24 +103,33 @@ function renderSummary() {
     return String(a[sort]).localeCompare(String(b[sort]), undefined, {numeric:true});
   });
   if (sort === 'grand_total' || sort === 'percentage') rows.reverse();
-  const heads = ['S.No.', 'Roll No.', 'Student Name', ...state.subjects.map(s => s.name), 'Grand Total', 'Percentage', 'Result', 'Rank', 'Remarks'];
-  $('#summary-table').innerHTML = `<thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td>${row.sno}</td><td>${row.roll_no}</td><td>${row.student_name}</td>${state.subjects.map(s => `<td class="number">${fmt(row.subjects[s.name])}</td>`).join('')}<td class="number">${fmt(row.grand_total)}</td><td class="number">${row.percentage.toFixed(2)}</td><td class="${row.result.toLowerCase()}">${row.result}</td><td class="number">${row.rank}</td><td>${row.remarks}</td></tr>`).join('')}</tbody>`;
+  const heads = ['S.No.', 'Roll No.', 'Student Name', ...state.subjects.map(s => s.name), 'Grand Total', 'Percentage', 'Result', 'Rank', 'Score Band', 'Remarks'];
+  $('#summary-table').innerHTML = `<thead><tr>${heads.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr><td>${row.sno}</td><td>${row.roll_no}</td><td>${row.student_name}</td>${state.subjects.map(s => `<td class="number">${fmt(row.subjects[s.name])}</td>`).join('')}<td class="number">${fmt(row.grand_total)}</td><td class="number">${row.percentage.toFixed(2)}</td><td class="${row.result.toLowerCase()}">${row.result}</td><td class="number">${row.rank}</td><td>${row.score_band}</td><td>${row.remarks}</td></tr>`).join('')}</tbody>`;
 }
 
 function renderSettings() {
   $('#pass-marks').value = state.settings.pass_marks;
   $('#max-marks').value = state.settings.max_marks;
+  $('#distinction-percentage').value = state.settings.distinction_percentage || 75;
+  $('#qi-basis').value = state.settings.qi_basis || 'appeared';
+  $('#score-bands').innerHTML = (state.settings.score_bands || DEFAULT_SCORE_BANDS).map((band, index) => `<div class="rule"><label>Min % <input type="number" step="0.01" value="${band.min}" data-band="${index}" data-field="min"></label><label>Band <input value="${band.label}" data-band="${index}" data-field="label"></label></div>`).join('');
+  $('#subject-rules').innerHTML = state.subjects.map(subject => `<div class="subject-rule"><strong>${subject.name}</strong><label><input type="checkbox" data-subject="${subject.id}" data-field="include_pass_fail" ${Number(subject.include_pass_fail) ? 'checked' : ''}> Include in Pass/Fail</label><label><input type="checkbox" data-subject="${subject.id}" data-field="include_percentage" ${Number(subject.include_percentage) ? 'checked' : ''}> Include in Percentage</label></div>`).join('');
   $('#remark-rules').innerHTML = state.settings.remark_rules.map((rule, index) => `<div class="rule"><label>Min % <input type="number" step="0.01" value="${rule.min}" data-rule="${index}" data-field="min"></label><label>Remark <input value="${rule.remark}" data-rule="${index}" data-field="remark"></label></div>`).join('');
-  $('#settings').querySelectorAll('input').forEach(input => input.addEventListener('input', saveSettings));
+  $('#settings').querySelectorAll('input,select').forEach(input => input.addEventListener('input', saveSettings));
+  $('#restore-bands').onclick = () => { state.settings.score_bands = DEFAULT_SCORE_BANDS.map(b => ({...b})); renderSettings(); saveSettings(); };
 }
 
 async function saveSettings() {
   state.settings.pass_marks = Number($('#pass-marks').value || 0);
   state.settings.max_marks = Number($('#max-marks').value || 1);
+  state.settings.distinction_percentage = Number($('#distinction-percentage').value || 75);
+  state.settings.qi_basis = $('#qi-basis').value;
+  $('#score-bands').querySelectorAll('input').forEach(input => state.settings.score_bands[Number(input.dataset.band)][input.dataset.field] = input.dataset.field === 'min' ? Number(input.value || 0) : input.value);
+  $('#subject-rules').querySelectorAll('input').forEach(input => { const subject = state.subjects.find(s => s.id === Number(input.dataset.subject)); subject[input.dataset.field] = input.checked ? 1 : 0; });
   $('#remark-rules').querySelectorAll('input').forEach(input => state.settings.remark_rules[Number(input.dataset.rule)][input.dataset.field] = input.dataset.field === 'min' ? Number(input.value || 0) : input.value);
   renderMarks();
   calculateAndRenderSummary();
-  state = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(state.settings)}).then(r => r.json());
+  state = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...state.settings, subjects: state.subjects})}).then(r => r.json());
 }
 
 function fmt(value) { return Number.isInteger(value) ? value : Number(value).toFixed(2); }
@@ -106,5 +140,7 @@ document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', (
   $('#' + tab.dataset.tab).classList.add('active');
 }));
 $('#search').addEventListener('input', renderSummary);
+$('#dashboard-search').addEventListener('input', renderDashboard);
+$('#dashboard-status').addEventListener('change', renderDashboard);
 $('#sort').addEventListener('change', renderSummary);
 loadWorkbook();
