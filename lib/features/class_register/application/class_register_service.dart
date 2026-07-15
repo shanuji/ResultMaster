@@ -44,15 +44,62 @@ class ClassRegisterService {
 
   Future<void> deleteStudent(int studentId) => _repository.deleteStudent(studentId);
 
-  Future<void> importStudents(int registerId, List<Student> imported) async {
+  Future<ClassRegisterImportSummary> importStudents(
+    int registerId,
+    List<Student> imported, {
+    required ClassRegisterImportMode mode,
+    int skipped = 0,
+    Iterable<String> duplicateRollNumbers = const <String>[],
+  }) async {
+    final existing = mode == ClassRegisterImportMode.append ? await _repository.students(registerId) : const <Student>[];
+    final normalizedStudents = <Student>[];
     final seen = <String>{};
+    final duplicates = duplicateRollNumbers.map((rollNumber) => rollNumber.trim()).where((rollNumber) => rollNumber.isNotEmpty).toSet();
+    var skippedRows = skipped;
+
     for (final student in imported) {
       final normalized = student.copyWith(registerId: registerId, rollNumber: student.rollNumber.trim(), name: student.name.trim());
-      _validator.validate(normalized, const <Student>[]);
-      if (!seen.add(normalized.rollNumber.toLowerCase())) {
-        throw const ClassRegisterFailure('Import contains duplicate Roll Numbers.');
+      try {
+        _validator.validate(normalized, [...existing, ...normalizedStudents]);
+      } on ClassRegisterFailure {
+        duplicates.add(normalized.rollNumber);
+        skippedRows++;
+        continue;
       }
+      if (!seen.add(normalized.rollNumber.toLowerCase())) {
+        duplicates.add(normalized.rollNumber);
+        skippedRows++;
+        continue;
+      }
+      normalizedStudents.add(normalized);
     }
-    await _repository.replaceStudents(registerId, imported);
+
+    if (mode == ClassRegisterImportMode.replaceExisting) {
+      await _repository.replaceStudents(registerId, normalizedStudents);
+    } else {
+      await _repository.appendStudents(registerId, normalizedStudents);
+    }
+
+    return ClassRegisterImportSummary(
+      imported: normalizedStudents.length,
+      skipped: skippedRows,
+      duplicateRollNumbers: duplicates.toList(growable: false)..sort(),
+    );
   }
+}
+
+enum ClassRegisterImportMode { replaceExisting, append }
+
+class ClassRegisterImportSummary {
+  const ClassRegisterImportSummary({
+    required this.imported,
+    required this.skipped,
+    required this.duplicateRollNumbers,
+  });
+
+  final int imported;
+  final int skipped;
+  final List<String> duplicateRollNumbers;
+
+  int get duplicates => duplicateRollNumbers.length;
 }
