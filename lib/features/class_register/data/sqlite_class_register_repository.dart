@@ -175,16 +175,6 @@ class SqliteClassRegisterRepository implements ClassRegisterRepository {
     });
   }
 
-  @override
-  Future<void> appendStudents(int registerId, List<Student> students) async {
-    await _db.transaction((txn) async {
-      final now = DateTime.now().toIso8601String();
-      for (final student in students) {
-        await txn.insert('students', _studentToRow(student.copyWith(registerId: registerId))..addAll({'created_at': now, 'updated_at': now}), conflictAlgorithm: ConflictAlgorithm.abort);
-      }
-    });
-  }
-
   ClassRegister _registerFromRow(Map<String, Object?> row) => ClassRegister(id: row['id'] as int, name: row['name'] as String, createdAt: DateTime.parse(row['created_at'] as String), updatedAt: DateTime.parse(row['updated_at'] as String));
   Student _studentFromRow(Map<String, Object?> row) => Student(id: row['id'] as int, registerId: row['register_id'] as int, rollNumber: row['roll_number'] as String, name: row['name'] as String, metadata: Map<String, Object?>.from(jsonDecode(row['metadata'] as String) as Map));
   Map<String, Object?> _studentToRow(Student student) => {'register_id': student.registerId, 'roll_number': student.rollNumber, 'name': student.name, 'metadata': jsonEncode(student.metadata)};
