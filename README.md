@@ -195,3 +195,75 @@ Open <http://127.0.0.1:8000> in a browser. The app creates `resultmaster.sqlite3
 ## Project notes
 
 `PROJECT_SPEC.md` was requested for Sprint 5 implementation but is not present in this repository snapshot. The implementation follows the Sprint 5 requirements from the task prompt.
+
+## Sprint 7 – Reports, Analytics & Data Management
+
+Sprint 7 expands ResultMaster with advanced reporting, analytics, import/export, backup/restore, and bulk-management tools while preserving the existing workbook UI and SQLite autosave workflow.
+
+### Advanced reports
+
+The **Reports** tab provides:
+
+- Class-wise and section-wise summary reports with sortable Rank, Roll No., Student Name, Total, Percentage, and Result columns.
+- Subject-wise report summaries with average, highest, and lowest marks per subject.
+- Topper lists ranked by grand total.
+- Pass/Fail analysis with pass and fail counts.
+- Merit list generation for passing students at or above the configured distinction percentage.
+- Report-wide search and sorting across students, marks totals, percentages, rank, and result status.
+
+### Printable A4 layouts
+
+The existing print-preview workflow now supports Sprint 7 report output with A4-friendly CSS. Use **A4 Class Print** for the full class report or **A4 Student Print** for an individual report card. Print settings continue to support school name, address, logo URL, header/footer text, margins, page size, class teacher, and principal names.
+
+### Analytics Dashboard
+
+The **Analytics** tab includes:
+
+- Grade distribution based on configured score bands.
+- Subject averages with highest, lowest, and pass percentage per subject.
+- Highest and lowest overall marks.
+- Overall pass percentage.
+- Overall class performance percentage.
+
+### Search, filter, and sorting
+
+The toolbar search box now applies across workbook students and report rows. The Sort selector supports Rank, Roll No., Student Name, Total, Percentage, and Result, with an Asc/Desc toggle for large report review.
+
+### Import, export, backup, and restore
+
+The **Data Management** tab adds practical data operations:
+
+- Export students as CSV.
+- Export marks as CSV.
+- Export settings as JSON.
+- Export summary/report data as Excel-compatible `.xlsx`.
+- Download a complete SQLite database backup.
+- Restore a complete database from a base64-encoded SQLite backup.
+- Import or bulk-edit students from `roll_no,name` CSV text.
+- Import or bulk-edit marks from `roll_no,name,subject,marks` CSV text.
+
+### Bulk operations and performance
+
+Bulk student and mark imports use SQLite upsert operations so existing roll numbers and mark cells are updated without duplicating data. Sprint 7 also adds indexes for student search/sorting, subject ordering, and subject/student marks lookups to improve responsiveness on larger datasets.
+
+### Sprint 7 API endpoints
+
+- `GET /api/analytics` – analytics dashboard metrics.
+- `GET /api/reports?q=&sort=&direction=` – advanced report data.
+- `GET /api/export/students.csv` – student CSV export.
+- `GET /api/export/marks.csv` – marks CSV export.
+- `GET /api/export/settings.json` – settings JSON export.
+- `GET /api/backup` – complete SQLite database backup.
+- `POST /api/import/students` – import/bulk edit students from CSV text.
+- `POST /api/import/marks` – import/bulk edit marks from CSV text.
+- `POST /api/students/bulk` – JSON bulk student upsert.
+- `POST /api/marks/bulk` – JSON bulk marks update.
+- `POST /api/restore` – restore a base64-encoded SQLite backup.
+
+### Running Sprint 7 locally
+
+```bash
+python3 server.py
+```
+
+Open <http://127.0.0.1:8000> in a browser and use the Workbook, Analytics, Reports, and Data Management tabs.

@@ -2,14 +2,17 @@
 """ResultMaster local server with SQLite autosave and Summary export."""
 from __future__ import annotations
 
+import base64
+import csv
 import json
+import shutil
 import sqlite3
 import zipfile
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent
@@ -87,6 +90,9 @@ def init_db() -> None:
                 FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
                 FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
             );
+            CREATE INDEX IF NOT EXISTS idx_students_roll_name ON students(roll_no, name);
+            CREATE INDEX IF NOT EXISTS idx_subjects_sort ON subjects(sort_order, id);
+            CREATE INDEX IF NOT EXISTS idx_marks_subject_student ON marks(subject_id, student_id);
             """
         )
         migrate_schema(con)
@@ -258,6 +264,56 @@ def dashboard_payload() -> dict:
     return {"groups": [{"class_name": workbook["class_name"], "examinations": [{"examination_name": workbook["examination_name"], "workbooks": [workbook]}]}]}
 
 
+
+def analytics_payload(payload: dict | None = None) -> dict:
+    payload = payload or workbook_payload()
+    rows = calculate_summary(payload)
+    subjects = payload["subjects"]
+    settings = payload["settings"]
+    marks = {(m["student_id"], m["subject_id"]): float(m.get("marks") or 0) for m in payload["marks"]}
+    bands = {str(b.get("label", "")): 0 for b in settings.get("score_bands", DEFAULT_SCORE_BANDS)}
+    if not bands:
+        bands = {"Ungraded": 0}
+    for row in rows:
+        bands[score_band_for(row["percentage"], settings.get("score_bands", DEFAULT_SCORE_BANDS)) or "Ungraded"] = bands.get(score_band_for(row["percentage"], settings.get("score_bands", DEFAULT_SCORE_BANDS)) or "Ungraded", 0) + 1
+    subject_stats = []
+    for subject in subjects:
+        vals = [marks.get((student["id"], subject["id"]), 0) for student in payload["students"]]
+        subject_stats.append({
+            "id": subject["id"], "name": subject["name"],
+            "average": round(sum(vals) / len(vals), 2) if vals else 0,
+            "highest": max(vals) if vals else 0, "lowest": min(vals) if vals else 0,
+            "pass_percentage": round((sum(1 for v in vals if v >= subject_pass_marks(subject, settings)) / len(vals) * 100), 2) if vals else 0,
+        })
+    passed = sum(1 for r in rows if r["result"] == "PASS")
+    percentages = [r["percentage"] for r in rows]
+    return {
+        "grade_distribution": bands,
+        "subject_averages": subject_stats,
+        "highest_marks": max((r["grand_total"] for r in rows), default=0),
+        "lowest_marks": min((r["grand_total"] for r in rows), default=0),
+        "pass_percentage": round((passed / len(rows) * 100), 2) if rows else 0,
+        "overall_class_performance": round(sum(percentages) / len(percentages), 2) if percentages else 0,
+        "student_count": len(rows), "pass_count": passed, "fail_count": len(rows) - passed,
+    }
+
+def reports_payload(report_type: str = "class", sort_by: str = "rank", direction: str = "asc", q: str = "") -> dict:
+    payload = workbook_payload(); rows = calculate_summary(payload); q = q.lower().strip()
+    if q: rows = [r for r in rows if q in str(r["roll_no"]).lower() or q in r["student_name"].lower() or q in r["result"].lower()]
+    reverse = direction == "desc"
+    if sort_by in {"roll_no", "student_name", "grand_total", "percentage", "result", "rank"}: rows.sort(key=lambda r: r[sort_by], reverse=reverse)
+    subject_reports = []
+    for subject in payload["subjects"]:
+        vals = [(r["roll_no"], r["student_name"], r["subjects"][subject["name"]]) for r in rows]
+        subject_reports.append({"subject": subject["name"], "average": round(sum(v[2] for v in vals)/len(vals),2) if vals else 0, "highest": max((v[2] for v in vals), default=0), "lowest": min((v[2] for v in vals), default=0), "students": vals})
+    return {
+        "type": report_type, "settings": payload["settings"], "subjects": payload["subjects"], "rows": rows,
+        "class_report": rows, "section_report": rows, "subject_report": subject_reports,
+        "topper_list": sorted(rows, key=lambda r: (-r["grand_total"], r["student_name"]))[:10],
+        "pass_fail_analysis": {"pass": sum(1 for r in rows if r["result"] == "PASS"), "fail": sum(1 for r in rows if r["result"] == "FAIL")},
+        "merit_list": [r for r in sorted(rows, key=lambda r: (-r["percentage"], r["student_name"])) if r["result"] == "PASS" and r["percentage"] >= float(payload["settings"].get("distinction_percentage", 75))],
+    }
+
 def xlsx_bytes() -> bytes:
     payload = workbook_payload()
     rows = calculate_summary(payload)
@@ -331,11 +387,29 @@ def col_name(n: int) -> str:
     return out
 
 
+
+def csv_export(kind: str) -> str:
+    payload = workbook_payload(); out = BytesIO(); text = []
+    if kind == "students":
+        text.append("roll_no,name\n")
+        for s in payload["students"]: text.append(f'"{str(s["roll_no"]).replace(chr(34), chr(34)*2)}","{s["name"].replace(chr(34), chr(34)*2)}"\n')
+    else:
+        text.append("roll_no,name,subject,marks\n")
+        mark_map = {(m["student_id"], m["subject_id"]): m["marks"] for m in payload["marks"]}
+        for stu in payload["students"]:
+            for sub in payload["subjects"]: text.append(f'"{stu["roll_no"]}","{stu["name"].replace(chr(34), chr(34)*2)}","{sub["name"].replace(chr(34), chr(34)*2)}",{mark_map.get((stu["id"], sub["id"]), 0)}\n')
+    return "".join(text)
+
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/dashboard":
             self.json(dashboard_payload())
+        elif path == "/api/analytics":
+            self.json(analytics_payload())
+        elif path == "/api/reports":
+            params = parse_qs(urlparse(self.path).query)
+            self.json(reports_payload(params.get("type", ["class"])[0], params.get("sort", ["rank"])[0], params.get("direction", ["asc"])[0], params.get("q", [""])[0]))
         elif path == "/api/workbook":
             self.json(workbook_payload())
         elif path == "/api/summary":
@@ -357,6 +431,18 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        elif path == "/api/export/students.csv":
+            data = csv_export("students").encode()
+            self.send_response(200); self.send_header("Content-Type", "text/csv"); self.send_header("Content-Disposition", f'attachment; filename="students-{datetime.now():%Y%m%d-%H%M%S}.csv"'); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+        elif path == "/api/export/marks.csv":
+            data = csv_export("marks").encode()
+            self.send_response(200); self.send_header("Content-Type", "text/csv"); self.send_header("Content-Disposition", f'attachment; filename="marks-{datetime.now():%Y%m%d-%H%M%S}.csv"'); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+        elif path == "/api/export/settings.json":
+            data = json.dumps(workbook_payload()["settings"], indent=2).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Disposition", f'attachment; filename="settings-{datetime.now():%Y%m%d-%H%M%S}.json"'); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+        elif path == "/api/backup":
+            data = DB.read_bytes() if DB.exists() else b""
+            self.send_response(200); self.send_header("Content-Type", "application/vnd.sqlite3"); self.send_header("Content-Disposition", f'attachment; filename="resultmaster-backup-{datetime.now():%Y%m%d-%H%M%S}.sqlite3"'); self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
         elif path in ("/api/export/summary.xlsx", "/api/export/report.xlsx"):
             data = xlsx_bytes()
             self.send_response(200)
@@ -371,6 +457,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        if path == "/api/restore":
+            DB.write_bytes(base64.b64decode(data.get("backup_base64", "")))
+            init_db()
+            self.json(workbook_payload())
+            return
         with db() as con:
             if path == "/api/marks":
                 subject = con.execute("SELECT max_marks FROM subjects WHERE id = ?", (data["subject_id"],)).fetchone()
@@ -382,6 +473,28 @@ class Handler(SimpleHTTPRequestHandler):
                     self.error_json(400, "Marks must be between 0 and the subject maximum")
                     return
                 con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (data["student_id"], data["subject_id"], marks))
+            elif path == "/api/students/bulk":
+                for student in data.get("students", []):
+                    roll = str(student.get("roll_no", "")).strip(); name = str(student.get("name", "")).strip()
+                    if roll and name:
+                        con.execute("INSERT INTO students (roll_no, name) VALUES (?, ?) ON CONFLICT(roll_no) DO UPDATE SET name = excluded.name", (roll, name))
+                ensure_mark_rows(con)
+            elif path == "/api/marks/bulk":
+                for item in data.get("marks", []):
+                    con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (item["student_id"], item["subject_id"], float(item.get("marks") or 0)))
+            elif path == "/api/import/students":
+                for line in data.get("csv", "").splitlines()[1:]:
+                    parts = next(csv.reader([line]))
+                    if len(parts) >= 2 and parts[0].strip() and parts[1].strip():
+                        con.execute("INSERT INTO students (roll_no, name) VALUES (?, ?) ON CONFLICT(roll_no) DO UPDATE SET name = excluded.name", (parts[0].strip(), parts[1].strip()))
+                ensure_mark_rows(con)
+            elif path == "/api/import/marks":
+                subject_by_name = {r["name"]: r["id"] for r in con.execute("SELECT id, name FROM subjects")}
+                student_by_roll = {r["roll_no"]: r["id"] for r in con.execute("SELECT id, roll_no FROM students")}
+                for line in data.get("csv", "").splitlines()[1:]:
+                    parts = next(csv.reader([line]))
+                    if len(parts) >= 4 and parts[0] in student_by_roll and parts[2] in subject_by_name:
+                        con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (student_by_roll[parts[0]], subject_by_name[parts[2]], float(parts[3] or 0)))
             elif path == "/api/settings":
                 con.execute(
                     """

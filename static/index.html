@@ -10,14 +10,22 @@
   <main class="workbook">
     <header class="toolbar">
       <h1>ResultMaster</h1>
-      <input id="search" type="search" placeholder="Search Roll Number or Student Name">
+      <input id="search" type="search" placeholder="Search students, reports and results">
+      <select id="sortBy"><option value="rank">Rank</option><option value="roll_no">Roll No.</option><option value="student_name">Name</option><option value="grand_total">Total</option><option value="percentage">Percentage</option><option value="result">Result</option></select>
+      <button id="sortDir">Asc</button>
       <select id="studentSelect" aria-label="Student for individual printing"></select>
-      <button id="printClass">Class Print Preview</button>
-      <button id="printStudent">Student Print Preview</button>
-      <button id="exportPdf">Export PDF</button>
+      <button id="printClass">A4 Class Print</button>
+      <button id="printStudent">A4 Student Print</button>
       <button id="exportExcel">Export Excel</button>
+      <button id="backupDb">Backup DB</button>
       <span id="status" role="status"></span>
     </header>
+    <nav class="tabs" id="viewTabs">
+      <button class="tab active" data-view="workbook">Workbook</button>
+      <button class="tab" data-view="analytics">Analytics</button>
+      <button class="tab" data-view="reports">Reports</button>
+      <button class="tab" data-view="data">Data Management</button>
+    </nav>
     <section id="settings" class="settings"></section>
     <section id="sheet" class="sheet"></section>
   </main>
