@@ -11,14 +11,14 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Standard UI Icons
-  cupertino_icons: ^10.2.0
+  # Standard UI Icons (Fixed version!)
+  cupertino_icons: ^1.0.8
 
   # Database & File storage (Required for your SQLite app)
   sqflite: ^2.3.2
   path: ^1.9.0
 
-  # NEW: Tools for our Error Logger & Log Exporting
+  # Tools for our Error Logger & Log Exporting
   path_provider: ^2.1.2
   share_plus: ^7.0.2
 
