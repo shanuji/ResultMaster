@@ -5,7 +5,8 @@ ResultMaster is an offline-first school result management app with an Excel-like
 ## Highlights
 
 - Excel-style marks entry with frozen headers and student columns.
-- Automatic Summary, Analytics, Reports, pass/fail status, percentage, rank, and remarks.
+- Dynamic Summary and Final sheets with configured subject columns, total marks, maximum marks, percentage, pass/fail status, rank, and configurable remarks.
+- Per-subject maximum marks, passing marks, pass/fail inclusion, and percentage inclusion rules that follow `PROJECT_SPEC.md`.
 - A4 class and individual student report-card print preview.
 - Exports for Students CSV, Marks CSV, Settings JSON, Excel `.xlsx`, PDF report cards, and complete SQLite backups.
 - Application settings for light/dark/system theme, default export format, print metadata, school details, and autosave preference.
@@ -48,7 +49,7 @@ Open <http://127.0.0.1:8000> in a browser. ResultMaster creates `resultmaster.sq
 
 ## Usage
 
-1. Open the **Workbook** tab to enter marks. Each edit validates the subject maximum and autosaves to SQLite.
+1. Open the **Workbook** tab to enter marks. Each edit validates the configured subject maximum and autosaves to SQLite.
 2. Use search (`Ctrl+/`) to find students by roll number or name.
 3. Use **Analytics** for grade distribution, subject averages, highest/lowest marks, pass percentage, and class performance.
 4. Use **Reports** for class/section reports, topper lists, merit lists, pass/fail analysis, and subject summaries.
@@ -56,6 +57,7 @@ Open <http://127.0.0.1:8000> in a browser. ResultMaster creates `resultmaster.sq
 6. Open **Application, print & export setup** to configure:
    - Theme: System, Light, or Dark.
    - Default export: Excel or PDF.
+   - Subject inclusion rules for pass/fail and percentage calculations.
    - School name, address, logo URL, header/footer text, page size, margins, class teacher, and principal.
 
 ## Backup and restore
@@ -98,7 +100,8 @@ flutter test
 
 ## Version 1.0 release notes
 
-- Finalized production polish for Sprint 8.
+- Finalized production polish for Sprint 8 and the Version 1.0 release candidate.
+- Aligned seeded workbook data, migration behavior, and settings persistence with the project specification subject configuration fields.
 - Added application-level preferences for theme, autosave, and default export format.
 - Improved responsive layout, dark mode support, focus styles, keyboard search, loading indicators, success toasts, and modal error handling.
 - Hardened local data operations with JSON validation, numeric bounds checks, text sanitization, SQLite foreign keys, restore file validation, and restore integrity checks.
