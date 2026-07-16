@@ -18,6 +18,7 @@
       <button id="printStudent">A4 Student Print</button>
       <button id="exportExcel">Export Excel</button>
       <button id="backupDb">Backup DB</button>
+      <span class="shortcut" title="Keyboard shortcut">Ctrl+/ Search</span>
       <span id="status" role="status"></span>
     </header>
     <nav class="tabs" id="viewTabs">
@@ -27,8 +28,10 @@
       <button class="tab" data-view="data">Data Management</button>
     </nav>
     <section id="settings" class="settings"></section>
-    <section id="sheet" class="sheet"></section>
+    <section id="sheet" class="sheet" aria-live="polite"></section>
   </main>
+  <div id="loading" class="loading" hidden role="status" aria-live="assertive"><div class="spinner"></div><span>Loading…</span></div>
+  <dialog id="messageDialog" aria-labelledby="dialogTitle"><h2 id="dialogTitle">Message</h2><p id="dialogMessage"></p><button id="dialogClose" autofocus>OK</button></dialog>
   <script src="/static/app.js"></script>
 </body>
 </html>
