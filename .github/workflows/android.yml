@@ -1,0 +1,111 @@
+# Build Android APKs for ResultMaster on every main branch update and pull request.
+# The workflow favors reproducible CI builds: pinned action major versions,
+# dependency caching, static analysis, tests, and artifact upload for review.
+name: Android APK
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+# Cancel superseded runs for the same branch/PR to conserve GitHub-hosted runner time.
+concurrency:
+  group: android-apk-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-android-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Android release builds require a JDK. Temurin 17 is the current safe default
+      # for modern Android Gradle Plugin and Flutter Android builds.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # Install the latest stable Flutter SDK and cache the SDK between workflow runs.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Cache pub packages explicitly so dependency resolution is fast and repeatable.
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Show Flutter environment
+        run: flutter doctor -v
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze source
+        run: flutter analyze
+
+      # Keep CI friendly for early projects that may not have tests yet while still
+      # running the Flutter test suite as soon as test files are added.
+      - name: Run tests
+        run: |
+          if find test -type f -name '*_test.dart' -print -quit | grep -q .; then
+            flutter test
+          else
+            echo "No Flutter tests found; continuing."
+          fi
+
+      # Attempt the production release APK first. If this fails (for example because
+      # release signing or minification is not ready), the workflow continues and
+      # creates a debug APK fallback for installation/testing.
+      - name: Build release APK
+        id: build_release
+        continue-on-error: true
+        run: flutter build apk --release
+
+      - name: Upload release APK
+        if: steps.build_release.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ResultMaster-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build debug APK fallback
+        if: steps.build_release.outcome != 'success'
+        id: build_debug
+        run: flutter build apk --debug
+
+      - name: Upload debug APK fallback
+        if: steps.build_release.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ResultMaster-APK
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Fail if release build failed
+        if: steps.build_release.outcome != 'success'
+        run: |
+          echo "Release APK build failed; uploaded debug APK fallback as ResultMaster-APK."
+          exit 1
