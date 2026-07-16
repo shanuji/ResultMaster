@@ -79,7 +79,7 @@ class ResultMasterApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterialDesign: true,
+        useMaterial3: true,
       ),
       // We point to our new Home screen with the Secret Tap Trick built in!
       home: const SecretHomeScreen(),
