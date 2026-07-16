@@ -131,14 +131,15 @@ def init_db() -> None:
             """,
             (json.dumps(DEFAULT_SCORE_BANDS), json.dumps(DEFAULT_REMARK_RULES)),
         )
-        for column, definition in (("max_marks", "REAL NOT NULL DEFAULT 100"), ("pass_marks", "REAL NOT NULL DEFAULT 33"), ("include_in_pass_fail", "INTEGER NOT NULL DEFAULT 1"), ("include_in_percentage", "INTEGER NOT NULL DEFAULT 1"), ("configured", "INTEGER NOT NULL DEFAULT 1")):
-            try:
-                con.execute(f"ALTER TABLE subjects ADD COLUMN {column} {definition}")
-            except sqlite3.OperationalError:
-                pass
         if con.execute("SELECT COUNT(*) FROM subjects").fetchone()[0] == 0:
             con.executemany(
-                "INSERT INTO subjects (name, sort_order, include_pass_fail, include_percentage) VALUES (?, ?, 1, 1)",
+                """
+                INSERT INTO subjects (
+                    name, sort_order, max_marks, pass_marks,
+                    include_in_pass_fail, include_in_percentage, configured,
+                    include_pass_fail, include_percentage
+                ) VALUES (?, ?, 100, 33, 1, 1, 1, 1, 1)
+                """,
                 [(name, i) for i, name in enumerate(DEFAULT_SUBJECTS)],
             )
         if con.execute("SELECT COUNT(*) FROM students").fetchone()[0] == 0:
@@ -176,10 +177,28 @@ def migrate_schema(con: sqlite3.Connection) -> None:
         if name not in workbook_columns:
             con.execute(f"ALTER TABLE workbook ADD COLUMN {name} {definition}")
     subject_columns = {row[1] for row in con.execute("PRAGMA table_info(subjects)")}
-    if "include_pass_fail" not in subject_columns:
-        con.execute("ALTER TABLE subjects ADD COLUMN include_pass_fail INTEGER NOT NULL DEFAULT 1")
-    if "include_percentage" not in subject_columns:
-        con.execute("ALTER TABLE subjects ADD COLUMN include_percentage INTEGER NOT NULL DEFAULT 1")
+    for name, definition in {
+        "max_marks": "REAL NOT NULL DEFAULT 100",
+        "pass_marks": "REAL NOT NULL DEFAULT 33",
+        "include_in_pass_fail": "INTEGER NOT NULL DEFAULT 1",
+        "include_in_percentage": "INTEGER NOT NULL DEFAULT 1",
+        "configured": "INTEGER NOT NULL DEFAULT 1",
+        # Legacy aliases are retained for databases created by early sprint builds.
+        "include_pass_fail": "INTEGER NOT NULL DEFAULT 1",
+        "include_percentage": "INTEGER NOT NULL DEFAULT 1",
+    }.items():
+        if name not in subject_columns:
+            con.execute(f"ALTER TABLE subjects ADD COLUMN {name} {definition}")
+    con.execute(
+        """
+        UPDATE subjects
+        SET include_in_pass_fail = COALESCE(include_in_pass_fail, include_pass_fail, 1),
+            include_in_percentage = COALESCE(include_in_percentage, include_percentage, 1),
+            include_pass_fail = COALESCE(include_pass_fail, include_in_pass_fail, 1),
+            include_percentage = COALESCE(include_percentage, include_in_percentage, 1),
+            configured = COALESCE(configured, 1)
+        """
+    )
 
 def ensure_mark_rows(con: sqlite3.Connection) -> None:
     con.execute(
@@ -250,13 +269,6 @@ def calculate_summary(payload: dict) -> list[dict]:
         row["rank"] = previous_rank
     return rows
 
-
-def subject_max_marks(subject: dict, settings: dict) -> float:
-    return float(subject.get("max_marks") or subject.get("maximum_marks") or settings.get("max_marks") or 0)
-
-
-def subject_pass_marks(subject: dict, settings: dict) -> float:
-    return float(subject.get("pass_marks") or subject.get("passing_marks") or settings.get("pass_marks") or 0)
 
 
 def remark_for(percentage: float, rules: list[dict]) -> str:
@@ -575,11 +587,14 @@ class Handler(SimpleHTTPRequestHandler):
                         con.execute(
                             """
                             UPDATE subjects
-                            SET include_in_pass_fail = ?, include_in_percentage = ?,
+                            SET max_marks = ?, pass_marks = ?,
+                                include_in_pass_fail = ?, include_in_percentage = ?,
                                 include_pass_fail = ?, include_percentage = ?
                             WHERE id = ?
                             """,
                             (
+                                safe_float(subject.get("max_marks"), float(data.get("max_marks", 100)), 1, 1000),
+                                safe_float(subject.get("pass_marks"), float(data.get("pass_marks", 33)), 0, 1000),
                                 1 if subject.get("include_in_pass_fail", subject.get("include_pass_fail")) else 0,
                                 1 if subject.get("include_in_percentage", subject.get("include_percentage")) else 0,
                                 1 if subject.get("include_in_pass_fail", subject.get("include_pass_fail")) else 0,

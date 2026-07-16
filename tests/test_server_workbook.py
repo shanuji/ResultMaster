@@ -37,3 +37,16 @@ def test_summary_export_is_valid_xlsx_with_dynamic_final_headers(tmp_path, monke
     assert "Maximum Marks" in sheet_xml
     assert "Pass / Fail" in sheet_xml
     assert "English" in sheet_xml
+
+
+def test_init_db_seeds_canonical_subject_configuration(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "DB", tmp_path / "resultmaster.sqlite3")
+
+    server.init_db()
+    payload = server.workbook_payload()
+
+    expected_keys = {"max_marks", "pass_marks", "include_in_pass_fail", "include_in_percentage", "configured"}
+    assert expected_keys.issubset(payload["subjects"][0])
+    assert all(subject["include_in_pass_fail"] == 1 for subject in payload["subjects"])
+    assert all(subject["include_in_percentage"] == 1 for subject in payload["subjects"])
+    assert server.calculate_summary(payload)[0]["maximum_marks"] == 500
