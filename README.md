@@ -88,15 +88,39 @@ The **Data Management** tab supports:
 - Import/bulk edit students with `roll_no,name` CSV.
 - Import/bulk edit marks with `roll_no,name,subject,marks` CSV.
 
+## Android release APK
+
+The Android application is configured for the production package `com.resultmaster.app` and release signing through Gradle properties or environment variables. Create or provide a private keystore, then build the signed APK without committing secrets:
+
+```bash
+export RESULTMASTER_KEYSTORE=/absolute/path/resultmaster-release.jks
+export RESULTMASTER_KEYSTORE_PASSWORD='<keystore-password>'
+export RESULTMASTER_KEY_ALIAS='<key-alias>'
+export RESULTMASTER_KEY_PASSWORD='<key-password>'
+flutter pub get
+flutter build apk --release
+```
+
+The generated release APK is written to `build/app/outputs/flutter-apk/app-release.apk`. Keep the keystore and passwords outside the repository; they are required for future Version 1.0 patch releases.
+
 ## Running tests and checks
 
 ```bash
 python -m py_compile server.py
 python -m pytest
 flutter test
+flutter build apk --release
 ```
 
-`flutter test` requires Flutter to be installed and available on `PATH`.
+`flutter test` and `flutter build apk --release` require Flutter and the Android build toolchain to be installed and available on `PATH`.
+
+## Version 1.0 changelog
+
+- Prepared RC-1 Android release signing configuration and documented the signed APK build flow.
+- Renamed the generated Excel workbook sheet to the dynamic Final sheet required by `PROJECT_SPEC.md`.
+- Tightened import validation so bulk mark imports use each configured subject maximum instead of a fixed cap.
+- Hardened backup restore by requiring SQLite integrity checks to return `ok` before replacing local data.
+- Removed an obsolete duplicate Android activity package and aligned the application id with the release package.
 
 ## Version 1.0 release notes
 

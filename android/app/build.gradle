@@ -5,15 +5,34 @@ plugins {
 }
 
 android {
-    namespace = "com.example.result_master"
+    namespace = "com.resultmaster.app"
     compileSdk = flutter.compileSdkVersion
 
     defaultConfig {
-        applicationId = "com.example.result_master"
+        applicationId = "com.resultmaster.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+    signingConfigs {
+        release {
+            def storeFilePath = project.findProperty("RESULTMASTER_KEYSTORE") ?: System.getenv("RESULTMASTER_KEYSTORE")
+            if (storeFilePath != null) {
+                storeFile = file(storeFilePath)
+                storePassword = project.findProperty("RESULTMASTER_KEYSTORE_PASSWORD") ?: System.getenv("RESULTMASTER_KEYSTORE_PASSWORD")
+                keyAlias = project.findProperty("RESULTMASTER_KEY_ALIAS") ?: System.getenv("RESULTMASTER_KEY_ALIAS")
+                keyPassword = project.findProperty("RESULTMASTER_KEY_PASSWORD") ?: System.getenv("RESULTMASTER_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.release
+            minifyEnabled = true
+            shrinkResources = true
+        }
     }
 }
 

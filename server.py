@@ -378,7 +378,7 @@ def xlsx_bytes() -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>')
         z.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
-        z.writestr("xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Summary" sheetId="1" r:id="rId1"/></sheets></workbook>')
+        z.writestr("xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Final" sheetId="1" r:id="rId1"/></sheets></workbook>')
         z.writestr("xl/_rels/workbook.xml.rels", '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')
         z.writestr("xl/styles.xml", '<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font/><font><b/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="2"><xf fontId="0"/><xf fontId="1" applyFont="1"/></cellXfs></styleSheet>')
         z.writestr("xl/worksheets/sheet1.xml", sheet)
@@ -510,7 +510,9 @@ class Handler(SimpleHTTPRequestHandler):
                 tmp = DB.with_suffix(".restore.tmp")
                 tmp.write_bytes(backup)
                 with sqlite3.connect(tmp) as check:
-                    check.execute("PRAGMA integrity_check").fetchone()
+                    integrity = check.execute("PRAGMA integrity_check").fetchone()
+                    if not integrity or integrity[0] != "ok":
+                        raise ValueError("Backup failed SQLite integrity check")
                 shutil.move(tmp, DB)
                 init_db()
                 self.json(workbook_payload())
@@ -545,12 +547,19 @@ class Handler(SimpleHTTPRequestHandler):
                             con.execute("INSERT INTO students (roll_no, name) VALUES (?, ?) ON CONFLICT(roll_no) DO UPDATE SET name = excluded.name", (sanitize_text(parts[0], 40), sanitize_text(parts[1], 120)))
                     ensure_mark_rows(con)
                 elif path == "/api/import/marks":
-                    subject_by_name = {r["name"]: r["id"] for r in con.execute("SELECT id, name FROM subjects")}
+                    subject_by_name = {
+                        r["name"]: {"id": r["id"], "max_marks": float(r["max_marks"])}
+                        for r in con.execute("SELECT id, name, max_marks FROM subjects")
+                    }
                     student_by_roll = {r["roll_no"]: r["id"] for r in con.execute("SELECT id, roll_no FROM students")}
                     for line in data.get("csv", "").splitlines()[1:]:
                         parts = next(csv.reader([line]))
                         if len(parts) >= 4 and parts[0] in student_by_roll and parts[2] in subject_by_name:
-                            con.execute("INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks", (student_by_roll[parts[0]], subject_by_name[parts[2]], safe_float(parts[3], 0, 0, 100)))
+                            subject = subject_by_name[parts[2]]
+                            con.execute(
+                                "INSERT INTO marks (student_id, subject_id, marks) VALUES (?, ?, ?) ON CONFLICT(student_id, subject_id) DO UPDATE SET marks = excluded.marks",
+                                (student_by_roll[parts[0]], subject["id"], safe_float(parts[3], 0, 0, subject["max_marks"])),
+                            )
                 elif path == "/api/settings":
                     con.execute(
                         """

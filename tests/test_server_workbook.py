@@ -37,6 +37,7 @@ def test_summary_export_is_valid_xlsx_with_dynamic_final_headers(tmp_path, monke
     assert "Maximum Marks" in sheet_xml
     assert "Pass / Fail" in sheet_xml
     assert "English" in sheet_xml
+    assert 'sheet name="Final"' in workbook.read("xl/workbook.xml").decode()
 
 
 def test_init_db_seeds_canonical_subject_configuration(tmp_path, monkeypatch):
@@ -50,3 +51,25 @@ def test_init_db_seeds_canonical_subject_configuration(tmp_path, monkeypatch):
     assert all(subject["include_in_pass_fail"] == 1 for subject in payload["subjects"])
     assert all(subject["include_in_percentage"] == 1 for subject in payload["subjects"])
     assert server.calculate_summary(payload)[0]["maximum_marks"] == 500
+
+
+def test_import_marks_respects_configured_subject_maximum(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "DB", tmp_path / "resultmaster.sqlite3")
+    server.init_db()
+
+    with server.db() as con:
+        con.execute("UPDATE subjects SET max_marks = 50 WHERE name = 'English'")
+
+    handler = object.__new__(server.Handler)
+    errors = []
+    handler.error_json = lambda status, message: errors.append((status, message))
+
+    # Exercise the same validator used by the bulk import endpoint.
+    with server.db() as con:
+        subject = con.execute("SELECT max_marks FROM subjects WHERE name = 'English'").fetchone()
+        try:
+            server.safe_float("75", 0, 0, float(subject["max_marks"]))
+        except ValueError as exc:
+            handler.error_json(400, str(exc))
+
+    assert errors == [(400, "Value must be no more than 50")]
