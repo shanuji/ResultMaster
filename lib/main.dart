@@ -568,8 +568,7 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
 
   void _exportAsExcel() async {
     var excel = ex.Excel.createExcel();
-    String defaultSheet = excel.defaultSheet ?? 'Sheet1';
-    ex.Sheet sheet = excel[defaultSheet];
+    ex.Sheet sheet = excel['Sheet1']; // FIX: Default sheet fetched directly!
 
     sheet.appendRow([
       ex.TextCellValue("Roll No"),
