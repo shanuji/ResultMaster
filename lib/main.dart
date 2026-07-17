@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 
@@ -153,11 +154,6 @@ class DatabaseHelper {
     await db.delete('workbooks', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> updateWorkbookTitle(int id, String newTitle) async {
-    final db = await instance.database;
-    await db.update('workbooks', {'title': newTitle}, where: 'id = ?', whereArgs: [id]);
-  }
-
   Future<Map<String, dynamic>> loadWorkbookData(int workbookId) async {
     final db = await instance.database;
 
@@ -177,7 +173,7 @@ class DatabaseHelper {
       return sub;
     }).toList();
 
-    final studMaps = await db.query('students', where: 'workbook_id = ?', whereArgs: [workbookId]);
+    final studMaps = await db.query('students', where: 'workbook_id = ?', whereArgs: [workbookId], orderBy: 'CAST(roll_no AS INTEGER) ASC, roll_no ASC');
     final markMaps = await db.query('student_marks', where: 'workbook_id = ?', whereArgs: [workbookId]);
     
     Map<String, Map<String, String>> structuralMarks = {};
@@ -219,6 +215,12 @@ class DatabaseHelper {
     final db = await instance.database;
     await db.delete('students', where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
     await db.delete('student_marks', where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
+  }
+
+  Future<void> clearAllStudents(int workbookId) async {
+    final db = await instance.database;
+    await db.delete('students', where: 'workbook_id = ?', whereArgs: [workbookId]);
+    await db.delete('student_marks', where: 'workbook_id = ?', whereArgs: [workbookId]);
   }
 
   Future<void> updateLiveStudentInfo(int workbookId, String oldRollNo, String newRollNo, String name) async {
@@ -481,6 +483,180 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
     _students = widget.initialStudents;
   }
 
+  void _openBulkPasterWizard() {
+    final textController = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 24, left: 16, right: 16),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.65,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Import Spreadsheet List', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              const Text(
+                'Copy columns directly from your Excel file and paste here.\nFormat: RollNo [Space or Tab] Student Name (One student per line)',
+                style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: TextField(
+                  controller: textController,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: const InputDecoration(
+                    hintText: 'Example:\n1\tTanush Bhal\n2\tAarav Sharma\n3\tIsha Patel',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48), backgroundColor: Colors.green[700], foregroundColor: Colors.white),
+                  icon: const Icon(Icons.file_present),
+                  label: const Text('Parse & Overwrite Workbook Records'),
+                  onPressed: () async {
+                    String raw = textController.text.trim();
+                    if (raw.isEmpty) return;
+
+                    List<String> lines = const LineSplitter().convert(raw);
+                    List<StudentRow> newParsedList = [];
+
+                    for (var line in lines) {
+                      String segment = line.trim();
+                      if (segment.isEmpty) continue;
+
+                      // Handles both tab-separated values and standard column whitespace
+                      List<String> parts = segment.split(RegExp(r'\s+'));
+                      if (parts.isNotEmpty) {
+                        String roll = parts[0];
+                        String name = parts.skip(1).join(" ").trim();
+                        if (name.isEmpty) name = "Student $roll";
+                        newParsedList.add(StudentRow(rollNo: roll, name: name, marks: {}));
+                      }
+                    }
+
+                    if (newParsedList.isNotEmpty) {
+                      await DatabaseHelper.instance.clearAllStudents(widget.workbookId);
+                      for (var student in newParsedList) {
+                        await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, student.rollNo, student.name);
+                      }
+                      
+                      setState(() {
+                        _students = newParsedList;
+                      });
+                      
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Successfully populated ${newParsedList.length} spreadsheet records!'), backgroundColor: Colors.green),
+                        );
+                      }
+                    }
+                  },
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _triggerStructuredExport() {
+    // Generate universally compatible CSV data table string
+    StringBuffer buffer = StringBuffer();
+    
+    // Header Line Configuration
+    buffer.write("Roll No,Name");
+    for (var sub in _subjects) {
+      buffer.write(",${sub.name}");
+    }
+    buffer.writeln(",Total Marks,Percentage,Final Result");
+
+    // Dynamic Rows Construction
+    for (var student in _students) {
+      buffer.write("${student.rollNo},${student.name}");
+      double totalObtained = 0.0;
+      double totalMax = 0.0;
+      bool failed = false;
+
+      for (var sub in _subjects) {
+        totalMax += sub.maxMarks;
+        if (student.isSubjectAttempted(sub)) {
+          double score = student.getSubjectScore(sub);
+          totalObtained += score;
+          if (sub.includeInPassFail && score < sub.passingMarks) failed = true;
+          buffer.write(",$score");
+        } else {
+          buffer.write(",-");
+        }
+      }
+
+      double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
+      String outcome = failed ? "FAIL" : "PASS";
+      buffer.writeln(",${totalObtained.toStringAsFixed(1)},${pct.toStringAsFixed(2)}%,$outcome");
+    }
+
+    final String csvTextOutput = buffer.toString();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.55,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Export Document Engine', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.copy),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: csvTextOutput));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Spreadsheet text copied to clipboard!'), backgroundColor: Colors.blue),
+                      );
+                    },
+                  )
+                ],
+              ),
+              const Text('Open this text inside Excel/Sheets or print to save directly to PDF.', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic)),
+              const SizedBox(height: 12),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.grey[100], border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(8)),
+                  child: SingleChildScrollView(
+                    child: Text(csvTextOutput, style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black87)),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+                icon: const Icon(Icons.done_all),
+                label: const Text('Dismiss'),
+                onPressed: () => Navigator.pop(context),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filteredStudents = _students.where((s) => s.name.toLowerCase().contains(_searchQuery.toLowerCase()) || s.rollNo.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
@@ -491,6 +667,9 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
         appBar: AppBar(
           title: Text(_currentTitle),
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          actions: [
+            IconButton(icon: const Icon(Icons.ios_share), title: 'Export Matrix', onPressed: _triggerStructuredExport),
+          ],
           bottom: const TabBar(
             isScrollable: true,
             tabs: [
@@ -527,8 +706,15 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                         child: Wrap(
                           alignment: WrapAlignment.spaceBetween,
                           crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8.0,
+                          runSpacing: 8.0,
                           children: [
-                            const Text('Names editable only here.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12)),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[50]),
+                              onPressed: _openBulkPasterWizard,
+                              icon: const Icon(Icons.cloud_upload, size: 18),
+                              label: const Text('Paste Excel Grid'),
+                            ),
                             ElevatedButton.icon(
                               onPressed: () async {
                                 int nextRoll = 1;
