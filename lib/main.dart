@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
+import 'package:excel_plus/excel_plus.dart' as ex;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -496,10 +500,10 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('Import Spreadsheet List', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text('Import Spreadsheet Grid', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
               const Text(
-                'Copy columns directly from your Excel file and paste here.\nFormat: RollNo [Space or Tab] Student Name (One student per line)',
+                'Copy columns from Excel and paste here.\nFormat: RollNo [Tab/Space] Name (One student per line)',
                 style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
               ),
               const SizedBox(height: 12),
@@ -510,7 +514,7 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                   expands: true,
                   textAlignVertical: TextAlignVertical.top,
                   decoration: const InputDecoration(
-                    hintText: 'Example:\n1\tTanush Bhal\n2\tAarav Sharma\n3\tIsha Patel',
+                    hintText: '1\tTanush Bhal\n2\tAarav Sharma\n3\tIsha Patel',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -519,8 +523,8 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 12.0),
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48), backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                  icon: const Icon(Icons.file_present),
-                  label: const Text('Parse & Overwrite Workbook Records'),
+                  icon: const Icon(Icons.insert_drive_file),
+                  label: const Text('Parse Matrix & Synchronize DB'),
                   onPressed: () async {
                     String raw = textController.text.trim();
                     if (raw.isEmpty) return;
@@ -532,7 +536,6 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                       String segment = line.trim();
                       if (segment.isEmpty) continue;
 
-                      // Handles both tab-separated values and standard column whitespace
                       List<String> parts = segment.split(RegExp(r'\s+'));
                       if (parts.isNotEmpty) {
                         String roll = parts[0];
@@ -547,16 +550,10 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                       for (var student in newParsedList) {
                         await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, student.rollNo, student.name);
                       }
-                      
-                      setState(() {
-                        _students = newParsedList;
-                      });
-                      
+                      setState(() { _students = newParsedList; });
                       if (mounted) {
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Successfully populated ${newParsedList.length} spreadsheet records!'), backgroundColor: Colors.green),
-                        );
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Populated ${newParsedList.length} spreadsheet records!'), backgroundColor: Colors.green));
                       }
                     }
                   },
@@ -569,89 +566,135 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
     );
   }
 
-  void _triggerStructuredExport() {
-    // Generate universally compatible CSV data table string
-    StringBuffer buffer = StringBuffer();
-    
-    // Header Line Configuration
-    buffer.write("Roll No,Name");
-    for (var sub in _subjects) {
-      buffer.write(",${sub.name}");
-    }
-    buffer.writeln(",Total Marks,Percentage,Final Result");
+  void _exportAsExcel() async {
+    var excel = ex.Excel.createExcel();
+    ex.Sheet sheet = excel['Sheet1'];
 
-    // Dynamic Rows Construction
-    for (var student in _students) {
-      buffer.write("${student.rollNo},${student.name}");
+    sheet.appendRow([
+      ex.CellValue.text("Roll No"),
+      ex.CellValue.text("Name"),
+      ..._subjects.map((s) => ex.CellValue.text(s.name)),
+      ex.CellValue.text("Total"),
+      ex.CellValue.text("Percentage"),
+      ex.CellValue.text("Result")
+    ]);
+
+    for (var s in _students) {
       double totalObtained = 0.0;
       double totalMax = 0.0;
       bool failed = false;
+      List<ex.CellValue> subValues = [];
 
       for (var sub in _subjects) {
         totalMax += sub.maxMarks;
-        if (student.isSubjectAttempted(sub)) {
-          double score = student.getSubjectScore(sub);
+        if (s.isSubjectAttempted(sub)) {
+          double score = s.getSubjectScore(sub);
           totalObtained += score;
           if (sub.includeInPassFail && score < sub.passingMarks) failed = true;
-          buffer.write(",$score");
+          subValues.add(ex.CellValue.number(score));
         } else {
-          buffer.write(",-");
+          subValues.add(ex.CellValue.text("-"));
         }
       }
-
       double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-      String outcome = failed ? "FAIL" : "PASS";
-      buffer.writeln(",${totalObtained.toStringAsFixed(1)},${pct.toStringAsFixed(2)}%,$outcome");
+
+      sheet.appendRow([
+        ex.CellValue.text(s.rollNo),
+        ex.CellValue.text(s.name),
+        ...subValues,
+        ex.CellValue.number(totalObtained),
+        ex.CellValue.text('${pct.toStringAsFixed(2)}%'),
+        ex.CellValue.text(failed ? "FAIL" : "PASS")
+      ]);
     }
 
-    final String csvTextOutput = buffer.toString();
+    var bytes = excel.encode();
+    if (bytes != null) {
+      await Share.shareXFiles(
+        [XFile.fromData(Uint8List.fromList(bytes), mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', name: '$_currentTitle.xlsx')],
+        text: 'Excel Report Card Grid',
+      );
+    }
+  }
 
+  void _exportAsPDF() async {
+    final pdfDoc = pw.Document();
+    
+    pdfDoc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        build: (pw.Context context) => [
+          pw.Header(level: 0, child: pw.Text(_currentTitle, style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold))),
+          pw.SizedBox(height: 12),
+          pw.TableHelper.fromTextArray(
+            headers: ['Roll No', 'Name', ..._subjects.map((s) => s.name), 'Total', '%', 'Result'],
+            data: _students.map((s) {
+              double totalObtained = 0.0; double totalMax = 0.0; bool failed = false;
+              List<String> rowCells = [s.rollNo, s.name];
+
+              for (var sub in _subjects) {
+                totalMax += sub.maxMarks;
+                if (s.isSubjectAttempted(sub)) {
+                  double score = s.getSubjectScore(sub);
+                  totalObtained += score;
+                  if (sub.includeInPassFail && score < sub.passingMarks) failed = true;
+                  rowCells.add(score.toStringAsFixed(1));
+                } else {
+                  rowCells.add("-");
+                }
+              }
+              double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
+              rowCells.addAll([totalObtained.toStringAsFixed(1), '${pct.toStringAsFixed(2)}%', failed ? "FAIL" : "PASS"]);
+              return rowCells;
+            }).toList(),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            cellAlignment: pw.Alignment.center,
+          )
+        ]
+      )
+    );
+
+    final bytes = await pdfDoc.save();
+    await Share.shareXFiles(
+      [XFile.fromData(bytes, mimeType: 'application/pdf', name: '$_currentTitle.pdf')],
+      text: 'PDF Grade Sheet Report',
+    );
+  }
+
+  void _showExportOptions() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.55,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Export Document Engine', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: const Icon(Icons.copy),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: csvTextOutput));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Spreadsheet text copied to clipboard!'), backgroundColor: Colors.blue),
-                      );
-                    },
-                  )
-                ],
-              ),
-              const Text('Open this text inside Excel/Sheets or print to save directly to PDF.', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic)),
-              const SizedBox(height: 12),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.grey[100], border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(8)),
-                  child: SingleChildScrollView(
-                    child: Text(csvTextOutput, style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.black87)),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        height: 220,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Choose Download Format', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green[50], padding: const EdgeInsets.symmetric(vertical: 14)),
+                    icon: const Icon(Icons.table_view, color: Colors.green),
+                    label: const Text('Excel (.xlsx)', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                    onPressed: () { Navigator.pop(context); _exportAsExcel(); },
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
-                icon: const Icon(Icons.done_all),
-                label: const Text('Dismiss'),
-                onPressed: () => Navigator.pop(context),
-              )
-            ],
-          ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red[50], padding: const EdgeInsets.symmetric(vertical: 14)),
+                    icon: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                    label: const Text('PDF (.pdf)', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                    onPressed: () { Navigator.pop(context); _exportAsPDF(); },
+                  ),
+                ),
+              ],
+            )
+          ],
         ),
       ),
     );
@@ -668,7 +711,7 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
           title: Text(_currentTitle),
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           actions: [
-            IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Export Matrix', onPressed: _triggerStructuredExport),
+            IconButton(icon: const Icon(Icons.download), tooltip: 'Download Records', onPressed: _showExportOptions),
           ],
           bottom: const TabBar(
             isScrollable: true,
@@ -697,7 +740,6 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
             Expanded(
               child: TabBarView(
                 children: [
-                  // Tab 1: Master List
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -721,11 +763,8 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                                 while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++;
                                 String newRoll = nextRoll.toString();
                                 String newName = "New Student";
-                                
                                 await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, newRoll, newName);
-                                setState(() {
-                                  _students.add(StudentRow(rollNo: newRoll, name: newName, marks: {}));
-                                });
+                                setState(() { _students.add(StudentRow(rollNo: newRoll, name: newName, marks: {})); });
                               },
                               icon: const Icon(Icons.person_add, size: 18),
                               label: const Text('Add Student'),
@@ -775,14 +814,8 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                       ),
                     ],
                   ),
-                  
-                  // Tab 2: Subject Sheets
                   SubjectMarksTabWidget(workbookId: widget.workbookId, subjects: _subjects, students: filteredStudents, allStudents: _students),
-                  
-                  // Tab 3: Final Calculation
                   FinalSheetTabWidget(subjects: _subjects, students: filteredStudents),
-                  
-                  // Tab 4: Statistical Summary
                   SummarySheetTabWidget(subjects: _subjects, students: filteredStudents),
                 ],
               ),
