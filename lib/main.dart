@@ -157,7 +157,7 @@ class DatabaseHelper {
       });
     }
 
-    List<String> defaultNames = ["Tanush Bhal", "Aarav Sharma", "Isha Patel", "Reyansh Gupta"];
+    List<String> defaultNames = ["Student 1", "Student 2", "Student 3", "Student 4"];
     for (int i = 0; i < defaultNames.length; i++) {
       await db.insert('students', {
         'workbook_id': workbookId,
