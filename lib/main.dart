@@ -437,13 +437,13 @@ class MasterListTab extends StatelessWidget {
 }
 
 // ==========================================
-// CUSTOM INPUT FIELD 
+// CUSTOM INPUT FIELD (Focus-Aware Fix)
 // ==========================================
 class MarkInputField extends StatefulWidget {
   final String initialValue;
-  final Function(String) onChanged;
+  final Function(String) onFocusLostOrSubmitted;
 
-  const MarkInputField({super.key, required this.initialValue, required this.onChanged});
+  const MarkInputField({super.key, required this.initialValue, required this.onFocusLostOrSubmitted});
 
   @override
   State<MarkInputField> createState() => _MarkInputFieldState();
@@ -451,11 +451,20 @@ class MarkInputField extends StatefulWidget {
 
 class _MarkInputFieldState extends State<MarkInputField> {
   late TextEditingController _controller;
+  late FocusNode _focusNode;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue);
+    _focusNode = FocusNode();
+    
+    // Listens for when the cursor leaves the box
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus) {
+        widget.onFocusLostOrSubmitted(_controller.text);
+      }
+    });
   }
 
   @override
@@ -469,6 +478,7 @@ class _MarkInputFieldState extends State<MarkInputField> {
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -476,12 +486,13 @@ class _MarkInputFieldState extends State<MarkInputField> {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: _controller,
+      focusNode: _focusNode,
       keyboardType: TextInputType.text,
       textInputAction: TextInputAction.next, 
       textAlign: TextAlign.center,
       decoration: const InputDecoration(hintText: "-", border: InputBorder.none),
-      onChanged: (val) {
-        widget.onChanged(val);
+      onFieldSubmitted: (val) {
+        widget.onFocusLostOrSubmitted(val);
       },
     );
   }
@@ -614,10 +625,13 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
                           child: MarkInputField(
                             key: ValueKey('${student.rollNo}_${currentSub.name}'),
                             initialValue: student.marks[currentSub.name] ?? "",
-                            onChanged: (newValue) {
-                              setState(() {
-                                student.marks[currentSub.name] = _cleanMarkInput(newValue, currentSub.maxMarks);
-                              });
+                            onFocusLostOrSubmitted: (newValue) {
+                              final cleaned = _cleanMarkInput(newValue, currentSub.maxMarks);
+                              if (student.marks[currentSub.name] != cleaned) {
+                                setState(() {
+                                  student.marks[currentSub.name] = cleaned;
+                                });
+                              }
                             },
                           ),
                         ),
@@ -655,13 +669,80 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
 }
 
 // ==========================================
-// TAB 3: FINAL CALCULATION
+// TAB 3: FINAL CALCULATION (With Sorting!)
 // ==========================================
-class FinalSheetTab extends StatelessWidget {
+class FinalSheetTab extends StatefulWidget {
   final List<SubjectSetup> subjects;
   final List<StudentRow> students;
 
   const FinalSheetTab({super.key, required this.subjects, required this.students});
+
+  @override
+  State<FinalSheetTab> createState() => _FinalSheetTabState();
+}
+
+class _FinalSheetTabState extends State<FinalSheetTab> {
+  int? _sortColumnIndex;
+  bool _isAscending = true;
+  late List<StudentRow> _sortedStudents;
+
+  @override
+  void initState() {
+    super.initState();
+    _sortedStudents = List.from(widget.students);
+  }
+
+  @override
+  void didUpdateWidget(covariant FinalSheetTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sortedStudents = List.from(widget.students);
+    _applySort();
+  }
+
+  double _getTotal(StudentRow student) {
+    double total = 0.0;
+    for (var sub in widget.subjects) {
+      if (student.isSubjectAttempted(sub)) {
+        total += student.getSubjectScore(sub);
+      }
+    }
+    return total;
+  }
+
+  double _getPct(StudentRow student) {
+    double totalObtained = _getTotal(student);
+    double totalMax = widget.subjects.fold(0.0, (sum, sub) => sum + sub.maxMarks);
+    return totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
+  }
+
+  void _applySort() {
+    if (_sortColumnIndex == null) return;
+    
+    _sortedStudents.sort((a, b) {
+      int mod = _isAscending ? 1 : -1;
+      
+      if (_sortColumnIndex == 0) { 
+        double rollA = double.tryParse(a.rollNo) ?? 0;
+        double rollB = double.tryParse(b.rollNo) ?? 0;
+        return rollA.compareTo(rollB) * mod;
+      } else if (_sortColumnIndex == 1) { 
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase()) * mod;
+      } else if (_sortColumnIndex == widget.subjects.length + 2) { 
+        return _getTotal(a).compareTo(_getTotal(b)) * mod;
+      } else if (_sortColumnIndex == widget.subjects.length + 3) { 
+        return _getPct(a).compareTo(_getPct(b)) * mod;
+      }
+      return 0;
+    });
+  }
+
+  void _onSort(int columnIndex, bool ascending) {
+    setState(() {
+      _sortColumnIndex = columnIndex;
+      _isAscending = ascending;
+      _applySort();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -671,20 +752,22 @@ class FinalSheetTab extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: DataTable(
           headingRowColor: MaterialStateProperty.all(Colors.blue[50]),
+          sortColumnIndex: _sortColumnIndex,
+          sortAscending: _isAscending,
           columns: [
-            const DataColumn(label: Text('Roll No')),
-            const DataColumn(label: Text('Name')),
-            ...subjects.map((sub) => DataColumn(label: Text(sub.name))),
-            const DataColumn(label: Text('Total')),
-            const DataColumn(label: Text('%')),
+            DataColumn(label: const Text('Roll No'), onSort: _onSort),
+            DataColumn(label: const Text('Name'), onSort: _onSort),
+            ...widget.subjects.map((sub) => DataColumn(label: Text(sub.name))),
+            DataColumn(label: const Text('Total'), onSort: _onSort, numeric: true),
+            DataColumn(label: const Text('%'), onSort: _onSort, numeric: true),
             const DataColumn(label: Text('Result')),
           ],
-          rows: students.map((student) {
+          rows: _sortedStudents.map((student) {
             double totalObtained = 0.0;
             double totalMax = 0.0;
             bool failed = false;
 
-            for (var sub in subjects) {
+            for (var sub in widget.subjects) {
               totalMax += sub.maxMarks;
               if (student.isSubjectAttempted(sub)) {
                 double score = student.getSubjectScore(sub);
@@ -699,7 +782,7 @@ class FinalSheetTab extends StatelessWidget {
               cells: [
                 DataCell(Text(student.rollNo)),
                 DataCell(Text(student.name)),
-                ...subjects.map((sub) => DataCell(Text(student.isSubjectAttempted(sub) ? student.marks[sub.name] ?? "-" : "-"))),
+                ...widget.subjects.map((sub) => DataCell(Text(student.isSubjectAttempted(sub) ? student.marks[sub.name] ?? "-" : "-"))),
                 DataCell(Text(totalObtained.toStringAsFixed(1))),
                 DataCell(Text('${pct.toStringAsFixed(2)}%')),
                 DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold))),
