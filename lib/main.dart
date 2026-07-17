@@ -1,8 +1,9 @@
 import 'dart:convert';
+import 'dart:io'; // Required for writing the crash log to a file
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart'; // Required for the crash logger
+import 'package:flutter/foundation.dart'; 
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:excel/excel.dart' as ex;
@@ -11,19 +12,37 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 
+// ==========================================
+// CRASH LOGGER HELPERS
+// ==========================================
+Future<File> getLogFile() async {
+  final dbPath = await getDatabasesPath();
+  return File(p.join(dbPath, 'crash_log.txt'));
+}
+
+void logCrash(String error, String stackTrace) async {
+  try {
+    final file = await getLogFile();
+    final timestamp = DateTime.now().toIso8601String();
+    await file.writeAsString('[$timestamp]\n$error\n$stackTrace\n\n--------------------\n\n', mode: FileMode.append);
+  } catch (e) {
+    debugPrint('🔴 FAILED TO WRITE LOG: $e');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 1. Catch layout and UI errors
   FlutterError.onError = (FlutterErrorDetails details) {
     debugPrint('🔴 UI CRASH CAUGHT: ${details.exceptionAsString()}');
-    debugPrint('Stack trace: ${details.stack}');
+    logCrash('UI CRASH: ${details.exceptionAsString()}', details.stack.toString());
   };
 
   // 2. Catch asynchronous and background errors
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('🔴 ASYNC CRASH CAUGHT: $error');
-    debugPrint('Stack trace: $stack');
+    logCrash('ASYNC CRASH: $error', stack.toString());
     return true; // Prevents the app from instantly crashing
   };
 
@@ -157,7 +176,7 @@ class DatabaseHelper {
       });
     }
 
-    List<String> defaultNames = ["Student 1", "Student 2", "Student 3", "Student 4"];
+    List<String> defaultNames = ["Tanush Bhal", "Aarav Sharma", "Isha Patel", "Reyansh Gupta"];
     for (int i = 0; i < defaultNames.length; i++) {
       await db.insert('students', {
         'workbook_id': workbookId,
@@ -331,6 +350,75 @@ class StudentRow {
 }
 
 // ==========================================
+// NEW: IN-APP LOG VIEWER SCREEN
+// ==========================================
+class CrashLogScreen extends StatefulWidget {
+  const CrashLogScreen({super.key});
+  @override
+  State<CrashLogScreen> createState() => _CrashLogScreenState();
+}
+
+class _CrashLogScreenState extends State<CrashLogScreen> {
+  String _logs = "Loading logs...";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLogs();
+  }
+
+  Future<void> _loadLogs() async {
+    try {
+      final file = await getLogFile();
+      if (await file.exists()) {
+        final contents = await file.readAsString();
+        setState(() => _logs = contents.isEmpty ? "No crashes recorded yet!" : contents);
+      } else {
+        setState(() => _logs = "No crashes recorded yet!");
+      }
+    } catch (e) {
+      setState(() => _logs = "Error reading logs: $e");
+    }
+  }
+
+  Future<void> _clearLogs() async {
+    try {
+      final file = await getLogFile();
+      if (await file.exists()) {
+        await file.delete();
+      }
+      setState(() => _logs = "Logs cleared.");
+    } catch (e) {
+      setState(() => _logs = "Error clearing logs: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Crash Logs'),
+        backgroundColor: Colors.red[100],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete),
+            tooltip: 'Clear Logs',
+            onPressed: _clearLogs,
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: SelectableText(
+          _logs,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
 // CORE MASTER LANDING DASHBOARD
 // ==========================================
 class MasterDashboardHome extends StatefulWidget {
@@ -420,6 +508,15 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
       appBar: AppBar(
         title: const Text('ResultMaster Hub', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bug_report, color: Colors.red),
+            tooltip: 'View Crash Logs',
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const CrashLogScreen()));
+            },
+          )
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
