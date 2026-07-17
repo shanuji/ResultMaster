@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart'; // Required for the crash logger
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:excel/excel.dart' as ex;
@@ -9,9 +10,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
-
-void main() async {
-import 'package:flutter/foundation.dart'; // Make sure this is at the top with your other imports!
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +20,7 @@ void main() async {
     debugPrint('Stack trace: ${details.stack}');
   };
 
-  // 2. Catch asynchronous and background errors (Flutter 3.3+)
+  // 2. Catch asynchronous and background errors
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('🔴 ASYNC CRASH CAUGHT: $error');
     debugPrint('Stack trace: $stack');
@@ -49,10 +47,6 @@ void main() async {
       ),
     );
   };
-
-  runApp(const ResultMasterApp());
-}
-;
 
   runApp(const ResultMasterApp());
 }
