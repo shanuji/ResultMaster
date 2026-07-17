@@ -1,5 +1,5 @@
 name: result_master
-description: Offline School Result Management App with Excel-like marks workbook and SQLite autosave.
+description: Offline School Result Management App with Excel XLSX parser, PDF engine, and SQLite.
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -11,15 +11,18 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Standard UI Icons (Fixed version!)
+  # Standard UI Icons
   cupertino_icons: ^1.0.8
 
-  # Database & File storage (Required for your SQLite app)
+  # Database storage
   sqflite: ^2.3.2
   path: ^1.9.0
 
-  # Tools for our Error Logger & Log Exporting
-  path_provider: ^2.1.2
+  # Binary Excel parser & PDF drawing engine 
+  excel_plus: ^1.0.0
+  pdf: ^3.11.1
+
+  # Native File Sharing sheet integration
   share_plus: ^7.0.2
 
 dev_dependencies:
@@ -30,3 +33,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  
