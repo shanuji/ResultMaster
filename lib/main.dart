@@ -807,7 +807,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                       Container(
                         color: cellColor,
                         child: MarkInputField(
-                          key: ValueKey('${student.rollNo}${currentSub.name}$currentVal'),
+                          key: ValueKey('${student.rollNo}_${currentSub.name}_$currentVal'),
                           initialValue: currentVal,
                           onFocusLostOrSubmitted: (newValue) async {
                             final verified = _validateAndCleanInput(newValue, currentSub.maxMarks, student.name, currentSub.name);
@@ -828,7 +828,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                         Container(
                           color: cellColor,
                           child: MarkInputField(
-                            key: ValueKey('${student.rollNo}${markKey}$currentVal'),
+                            key: ValueKey('${student.rollNo}_${markKey}_$currentVal'),
                             initialValue: currentVal,
                             onFocusLostOrSubmitted: (newValue) async {
                               final verified = _validateAndCleanInput(newValue, c.maxMarks, student.name, c.name);
@@ -1063,7 +1063,14 @@ class SummarySheetTabWidget extends StatelessWidget {
 // ==========================================
 class SetupWizardWidget extends StatefulWidget {
   final List<Color> palette;
-  const SetupWizardWidget({super.key, required this.palette});
+  final Function(String, List<SubjectSetup>) onSetupComplete;
+
+  const SetupWizardWidget({
+    super.key, 
+    required this.palette, 
+    required this.onSetupComplete, 
+  });
+
   @override
   State<SetupWizardWidget> createState() => _SetupWizardWidgetState();
 }
@@ -1119,7 +1126,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
                           ),
                           Row(
                             children: [
-                              Expanded(child: TextFormField(key: ValueKey('${sub.name}max${sub.components.length}'), initialValue: sub.maxMarks.toStringAsFixed(0), decoration: InputDecoration(labelText: 'Max Marks', filled: sub.components.isNotEmpty, fillColor: Colors.grey[200]), keyboardType: TextInputType.number, enabled: sub.components.isEmpty, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)),
+                              Expanded(child: TextFormField(key: ValueKey('${sub.name}_max_${sub.components.length}'), initialValue: sub.maxMarks.toStringAsFixed(0), decoration: InputDecoration(labelText: 'Max Marks', filled: sub.components.isNotEmpty, fillColor: Colors.grey[200]), keyboardType: TextInputType.number, enabled: sub.components.isEmpty, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)),
                               const SizedBox(width: 12),
                               Expanded(child: TextFormField(initialValue: sub.passingMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Pass Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0)),
                             ],
@@ -1173,7 +1180,10 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
             padding: const EdgeInsets.symmetric(vertical: 12.0),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
-              onPressed: () { Navigator.pop(context); widget.onSetupComplete(_titleController.text, _subjects); },
+              onPressed: () { 
+                Navigator.pop(context); 
+                widget.onSetupComplete(_titleController.text, _subjects); 
+              },
               child: const Text('Save Setup & Build Sheets', style: TextStyle(fontSize: 16)),
             ),
           )
