@@ -1,11 +1,16 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'crash_logger.dart';
-import 'log_viewer_screen.dart';
+
+// Note: If crash_logger.dart and log_viewer_screen.dart are local files 
+// you haven't created yet, remove these two imports and the FlutterError overrides below.
+// import 'crash_logger.dart';
+// import 'log_viewer_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  /* 
+  // Uncomment this error logging block ONLY if you have crash_logger.dart setup
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     CrashLogger.logError(details.exception, details.stack, screenName: 'UI Rendering Crash');
@@ -15,6 +20,7 @@ void main() async {
     CrashLogger.logError(error, stack, screenName: 'Background Task / Async Error');
     return true;
   };
+  */
 
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return Material(
@@ -303,7 +309,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
 }
 
 // ==========================================
-// WORKBOOK DASHBOARD (Now with 4 Tabs)
+// WORKBOOK DASHBOARD 
 // ==========================================
 class WorkbookDashboardWidget extends StatefulWidget {
   final List<SubjectSetup> subjects;
@@ -324,7 +330,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
     final filteredStudents = widget.students.where((s) => s.name.toLowerCase().contains(_searchQuery.toLowerCase()) || s.rollNo.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
     return DefaultTabController(
-      length: 4, // Changed back to 4 tabs
+      length: 4, 
       child: Column(
         children: [
           Padding(
@@ -350,7 +356,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
                 Tab(icon: Icon(Icons.people), text: "Master List"),
                 Tab(icon: Icon(Icons.subject), text: "Subject Sheets"),
                 Tab(icon: Icon(Icons.assignment_turned_in), text: "Final Calculation"),
-                Tab(icon: Icon(Icons.analytics), text: "Statistical Summary"), // Restored Tab
+                Tab(icon: Icon(Icons.analytics), text: "Statistical Summary"), 
               ],
             ),
           ),
@@ -360,7 +366,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
                 MasterListTab(students: filteredStudents, allStudents: widget.students, onUpdate: () { widget.onStudentsUpdated(); setState(() {}); }),
                 SubjectMarksTab(subjects: widget.subjects, students: filteredStudents, allStudents: widget.students),
                 FinalSheetTab(subjects: widget.subjects, students: filteredStudents),
-                SummarySheetTab(subjects: widget.subjects, students: filteredStudents), // Restored View
+                SummarySheetTab(subjects: widget.subjects, students: filteredStudents), 
               ],
             ),
           )
@@ -387,7 +393,6 @@ class MasterListTab extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.all(8.0),
-          // FIX: Used Wrap instead of Row to stop the Hallmark/Watermark crash on small screens
           child: Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -432,7 +437,7 @@ class MasterListTab extends StatelessWidget {
 }
 
 // ==========================================
-// CUSTOM INPUT FIELD (Fixes Keypad Closing)
+// CUSTOM INPUT FIELD 
 // ==========================================
 class MarkInputField extends StatefulWidget {
   final String initialValue;
@@ -456,7 +461,6 @@ class _MarkInputFieldState extends State<MarkInputField> {
   @override
   void didUpdateWidget(covariant MarkInputField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Only update if the parent changed it externally
     if (oldWidget.initialValue != widget.initialValue && _controller.text != widget.initialValue) {
       _controller.text = widget.initialValue;
     }
@@ -473,7 +477,7 @@ class _MarkInputFieldState extends State<MarkInputField> {
     return TextFormField(
       controller: _controller,
       keyboardType: TextInputType.text,
-      textInputAction: TextInputAction.next, // Action moves to next, no manual double-jump required
+      textInputAction: TextInputAction.next, 
       textAlign: TextAlign.center,
       decoration: const InputDecoration(hintText: "-", border: InputBorder.none),
       onChanged: (val) {
@@ -518,7 +522,6 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
     int totalStudents = widget.allStudents.length;
     int enteredCount = widget.allStudents.where((s) => s.isSubjectAttempted(currentSub)).length;
 
-    // FIX: Header Background Color changes based on completion status
     bool isComplete = (enteredCount == totalStudents && totalStudents > 0);
     Color headerBgColor = isComplete ? Colors.green[200]! : Colors.red[100]!;
 
@@ -535,4 +538,339 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
         if (score >= (currentSub.maxMarks * 0.75)) disttCount++;
       }
     }
-    double qi = enteredCount > 0 ? (sumMarks / enteredCount) : 0
+    double qi = enteredCount > 0 ? (sumMarks / enteredCount) : 0.0;
+
+    return Column(
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: widget.subjects.asMap().entries.map((entry) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: ChoiceChip(
+                  label: Text(entry.value.name),
+                  selected: entry.key == _selectedSubjectIndex,
+                  selectedColor: entry.value.themeColor.withOpacity(0.4),
+                  onSelected: (selected) { if (selected) setState(() => _selectedSubjectIndex = entry.key); },
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          color: headerBgColor, 
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Subject: ${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+              Text('Entered: $enteredCount / $totalStudents', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+            ],
+          ),
+        ),
+
+        Container(
+          margin: const EdgeInsets.all(8.0),
+          decoration: BoxDecoration(border: Border.all(color: Colors.grey[400]!)),
+          child: IntrinsicWidth(
+            child: Column(
+              children: [
+                _buildStatRow("Passed", passedCount.toString()),
+                _buildStatRow("Failed", failedCount.toString()),
+                _buildStatRow("QI", qi.toStringAsFixed(2)),
+                const Divider(height: 1, thickness: 1),
+                _buildStatRow("DISTT", disttCount.toString(), isWhite: true),
+              ],
+            ),
+          ),
+        ),
+        
+        const Divider(height: 1, thickness: 2),
+
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: [
+                  const DataColumn(label: Text('Roll No')), 
+                  const DataColumn(label: Text('Name')), 
+                  DataColumn(label: Text('Marks\n(Max: ${currentSub.maxMarks.toStringAsFixed(0)})'))
+                ],
+                rows: widget.students.map((student) {
+                  bool isFail = student.isSubjectAttempted(currentSub) && student.getSubjectScore(currentSub) < currentSub.passingMarks && (student.marks[currentSub.name] != "A" && student.marks[currentSub.name] != "AB");
+
+                  return DataRow(
+                    cells: [
+                      DataCell(Text(student.rollNo)),
+                      DataCell(Text(student.name)),
+                      DataCell(
+                        Container(
+                          color: isFail ? Colors.red[100] : null,
+                          child: MarkInputField(
+                            key: ValueKey('${student.rollNo}_${currentSub.name}'),
+                            initialValue: student.marks[currentSub.name] ?? "",
+                            onChanged: (newValue) {
+                              setState(() {
+                                student.marks[currentSub.name] = _cleanMarkInput(newValue, currentSub.maxMarks);
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatRow(String label, String value, {bool isWhite = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 80,
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          color: isWhite ? Colors.white : Colors.grey[200],
+          child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        Container(
+          width: 60,
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          decoration: BoxDecoration(border: Border(left: BorderSide(color: Colors.grey[400]!))),
+          child: Text(value, textAlign: TextAlign.center),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+// TAB 3: FINAL CALCULATION
+// ==========================================
+class FinalSheetTab extends StatelessWidget {
+  final List<SubjectSetup> subjects;
+  final List<StudentRow> students;
+
+  const FinalSheetTab({super.key, required this.subjects, required this.students});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.vertical,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: MaterialStateProperty.all(Colors.blue[50]),
+          columns: [
+            const DataColumn(label: Text('Roll No')),
+            const DataColumn(label: Text('Name')),
+            ...subjects.map((sub) => DataColumn(label: Text(sub.name))),
+            const DataColumn(label: Text('Total')),
+            const DataColumn(label: Text('%')),
+            const DataColumn(label: Text('Result')),
+          ],
+          rows: students.map((student) {
+            double totalObtained = 0.0;
+            double totalMax = 0.0;
+            bool failed = false;
+
+            for (var sub in subjects) {
+              totalMax += sub.maxMarks;
+              if (student.isSubjectAttempted(sub)) {
+                double score = student.getSubjectScore(sub);
+                totalObtained += score;
+                if (score < sub.passingMarks) failed = true;
+              }
+            }
+
+            double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
+
+            return DataRow(
+              cells: [
+                DataCell(Text(student.rollNo)),
+                DataCell(Text(student.name)),
+                ...subjects.map((sub) => DataCell(Text(student.isSubjectAttempted(sub) ? student.marks[sub.name] ?? "-" : "-"))),
+                DataCell(Text(totalObtained.toStringAsFixed(1))),
+                DataCell(Text('${pct.toStringAsFixed(2)}%')),
+                DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold))),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// TAB 4: SUMMARY ENGINE
+// ==========================================
+class SummaryTableBuilder {
+  static List<DataRow> buildRows(List<SubjectSetup> subjects, List<StudentRow> students, {bool includeSumRow = true}) {
+    int grandAppeared = 0;
+    int grandPassed = 0;
+    int grandDistinction = 0;
+    Map<String, int> grandBrackets = {
+      '0-20': 0, '21-32.9': 0, '33-40': 0, '41-50': 0, '51-59.9': 0,
+      '60': 0, '61-70': 0, '71-74.9': 0, '75-80': 0, '81-90': 0,
+      '90': 0, '91-94.9': 0, '95-100': 0
+    };
+
+    final subjectRows = subjects.map((sub) {
+      int appeared = 0;
+      int passed = 0;
+      int distinction = 0;
+      double sumMarks = 0.0;
+      Map<String, int> distribution = {
+        '0-20': 0, '21-32.9': 0, '33-40': 0, '41-50': 0, '51-59.9': 0,
+        '60': 0, '61-70': 0, '71-74.9': 0, '75-80': 0, '81-90': 0,
+        '90': 0, '91-94.9': 0, '95-100': 0
+      };
+
+      for (var row in students) {
+        if (!row.isSubjectAttempted(sub)) continue;
+        double score = row.getSubjectScore(sub);
+        appeared++;
+        sumMarks += score;
+
+        if (score >= sub.passingMarks) passed++;
+        if (score >= (sub.maxMarks * 0.75)) distinction++;
+
+        if (score >= 0 && score < 21) distribution['0-20'] = distribution['0-20']! + 1;
+        else if (score >= 21 && score < 32.9) distribution['21-32.9'] = distribution['21-32.9']! + 1;
+        else if (score >= 33 && score < 40) distribution['33-40'] = distribution['33-40']! + 1;
+        else if (score >= 41 && score < 50) distribution['41-50'] = distribution['41-50']! + 1;
+        else if (score >= 51 && score < 59.9) distribution['51-59.9'] = distribution['51-59.9']! + 1;
+        else if (score == 60) distribution['60'] = distribution['60']! + 1;
+        else if (score >= 61 && score < 70) distribution['61-70'] = distribution['61-70']! + 1;
+        else if (score >= 71 && score < 74.9) distribution['71-74.9'] = distribution['71-74.9']! + 1;
+        else if (score >= 75 && score < 80) distribution['75-80'] = distribution['75-80']! + 1;
+        else if (score >= 81 && score < 90) distribution['81-90'] = distribution['81-90']! + 1;
+        else if (score == 90) distribution['90'] = distribution['90']! + 1;
+        else if (score >= 91 && score < 94.9) distribution['91-94.9'] = distribution['91-94.9']! + 1;
+        else if (score >= 95 && score <= 100) distribution['95-100'] = distribution['95-100']! + 1;
+      }
+
+      double passPct = appeared > 0 ? (passed / appeared) * 100 : 0.0;
+      double qi = appeared > 0 ? (sumMarks / appeared) : 0.0;
+
+      grandAppeared += appeared;
+      grandPassed += passed;
+      grandDistinction += distinction;
+      distribution.forEach((key, val) => grandBrackets[key] = grandBrackets[key]! + val);
+
+      return DataRow(
+        cells: [
+          DataCell(Text(sub.name, style: const TextStyle(fontWeight: FontWeight.bold))),
+          DataCell(Text(appeared.toString())),
+          DataCell(Text(passed.toString())),
+          DataCell(Text('${passPct.toStringAsFixed(2)}%')),
+          DataCell(Text(distinction.toString())),
+          DataCell(Text(qi.toStringAsFixed(2))),
+          DataCell(Text(distribution['0-20'].toString())),
+          DataCell(Text(distribution['21-32.9'].toString())),
+          DataCell(Text(distribution['33-40'].toString())),
+          DataCell(Text(distribution['41-50'].toString())),
+          DataCell(Text(distribution['51-59.9'].toString())),
+          DataCell(Text(distribution['60'].toString())),
+          DataCell(Text(distribution['61-70'].toString())),
+          DataCell(Text(distribution['71-74.9'].toString())),
+          DataCell(Text(distribution['75-80'].toString())),
+          DataCell(Text(distribution['81-90'].toString())),
+          DataCell(Text(distribution['90'].toString())),
+          DataCell(Text(distribution['91-94.9'].toString())),
+          DataCell(Text(distribution['95-100'].toString())),
+        ],
+      );
+    }).toList();
+
+    if (!includeSumRow) return subjectRows;
+
+    final sumRow = DataRow(
+      color: MaterialStateProperty.all(Colors.orange[100]),
+      cells: [
+        const DataCell(Text('SUM', style: TextStyle(fontWeight: FontWeight.bold))),
+        DataCell(Text(grandAppeared.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
+        DataCell(Text(grandPassed.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
+        const DataCell(Text('-')),
+        DataCell(Text(grandDistinction.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
+        const DataCell(Text('-')),
+        DataCell(Text(grandBrackets['0-20'].toString())),
+        DataCell(Text(grandBrackets['21-32.9'].toString())),
+        DataCell(Text(grandBrackets['33-40'].toString())),
+        DataCell(Text(grandBrackets['41-50'].toString())),
+        DataCell(Text(grandBrackets['51-59.9'].toString())),
+        DataCell(Text(grandBrackets['60'].toString())),
+        DataCell(Text(grandBrackets['61-70'].toString())),
+        DataCell(Text(grandBrackets['71-74.9'].toString())),
+        DataCell(Text(grandBrackets['75-80'].toString())),
+        DataCell(Text(grandBrackets['81-90'].toString())),
+        DataCell(Text(grandBrackets['90'].toString())),
+        DataCell(Text(grandBrackets['91-94.9'].toString())),
+        DataCell(Text(grandBrackets['95-100'].toString())),
+      ],
+    );
+
+    return [...subjectRows, sumRow];
+  }
+
+  static List<DataColumn> getColumns() {
+    return const [
+      DataColumn(label: Text('SUBJECT', style: TextStyle(fontWeight: FontWeight.bold))),
+      DataColumn(label: Text('APPEARED')),
+      DataColumn(label: Text('PASS')),
+      DataColumn(label: Text('PASS %')),
+      DataColumn(label: Text('DISTT')),
+      DataColumn(label: Text('QI (AVG)')),
+      DataColumn(label: Text('0-20')),
+      DataColumn(label: Text('21-32.9')),
+      DataColumn(label: Text('33-40')),
+      DataColumn(label: Text('41-50')),
+      DataColumn(label: Text('51-59.9')),
+      DataColumn(label: Text('60')),
+      DataColumn(label: Text('61-70')),
+      DataColumn(label: Text('71-74.9')),
+      DataColumn(label: Text('75-80')),
+      DataColumn(label: Text('81-90')),
+      DataColumn(label: Text('90')),
+      DataColumn(label: Text('91-94.9')),
+      DataColumn(label: Text('95-100')),
+    ];
+  }
+}
+
+class SummarySheetTab extends StatelessWidget {
+  final List<SubjectSetup> subjects;
+  final List<StudentRow> students;
+
+  const SummarySheetTab({super.key, required this.subjects, required this.students});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.vertical,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: DataTable(
+            headingRowColor: MaterialStateProperty.all(Colors.yellow[100]),
+            border: TableBorder.all(color: Colors.grey[300]!),
+            columns: SummaryTableBuilder.getColumns(),
+            rows: SummaryTableBuilder.buildRows(subjects, students, includeSumRow: true),
+          ),
+        ),
+      ),
+    );
+  }
+}
