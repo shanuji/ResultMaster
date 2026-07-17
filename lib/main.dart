@@ -11,8 +11,25 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 
 void main() async {
+import 'package:flutter/foundation.dart'; // Make sure this is at the top with your other imports!
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. Catch layout and UI errors
+  FlutterError.onError = (FlutterErrorDetails details) {
+    debugPrint('🔴 UI CRASH CAUGHT: ${details.exceptionAsString()}');
+    debugPrint('Stack trace: ${details.stack}');
+  };
+
+  // 2. Catch asynchronous and background errors (Flutter 3.3+)
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('🔴 ASYNC CRASH CAUGHT: $error');
+    debugPrint('Stack trace: $stack');
+    return true; // Prevents the app from instantly crashing
+  };
+
+  // 3. Keep the custom error screen for layout bugs
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return Material(
       color: Colors.white,
@@ -24,7 +41,7 @@ void main() async {
             children: [
               const Icon(Icons.bug_report, color: Colors.red, size: 60),
               const SizedBox(height: 16),
-              const Text('Oops! Layout Error.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text('Oops! Something broke.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               Text(details.exceptionAsString(), style: TextStyle(color: Colors.grey[600]), textAlign: TextAlign.center),
             ],
           ),
@@ -32,6 +49,10 @@ void main() async {
       ),
     );
   };
+
+  runApp(const ResultMasterApp());
+}
+;
 
   runApp(const ResultMasterApp());
 }
