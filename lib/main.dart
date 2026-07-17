@@ -1085,7 +1085,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
 }
 
 // ==========================================
-// WIDGET: TAB 3 - FINAL SHEET
+// WIDGET: FINAL CALCULATION TAB
 // ==========================================
 class FinalSheetTabWidget extends StatefulWidget {
   final List<SubjectSetup> subjects;
@@ -1198,7 +1198,7 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
 }
 
 // ==========================================
-// WIDGET: TAB 4 - SUMMARY SHEET
+// WIDGET: STATISTICAL SUMMARY TAB
 // ==========================================
 class SummarySheetTabWidget extends StatelessWidget {
   final List<SubjectSetup> subjects;
