@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
-import 'package:excel_plus/excel_plus.dart' as ex;
+import 'package:excel/excel.dart' as ex;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
@@ -568,15 +568,16 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
 
   void _exportAsExcel() async {
     var excel = ex.Excel.createExcel();
-    ex.Sheet sheet = excel['Sheet1'];
+    String defaultSheet = excel.defaultSheet ?? 'Sheet1';
+    ex.Sheet sheet = excel[defaultSheet];
 
     sheet.appendRow([
-      ex.CellValue.text("Roll No"),
-      ex.CellValue.text("Name"),
-      ..._subjects.map((s) => ex.CellValue.text(s.name)),
-      ex.CellValue.text("Total"),
-      ex.CellValue.text("Percentage"),
-      ex.CellValue.text("Result")
+      ex.TextCellValue("Roll No"),
+      ex.TextCellValue("Name"),
+      ..._subjects.map((s) => ex.TextCellValue(s.name)),
+      ex.TextCellValue("Total"),
+      ex.TextCellValue("Percentage"),
+      ex.TextCellValue("Result")
     ]);
 
     for (var s in _students) {
@@ -591,20 +592,20 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
           double score = s.getSubjectScore(sub);
           totalObtained += score;
           if (sub.includeInPassFail && score < sub.passingMarks) failed = true;
-          subValues.add(ex.CellValue.number(score));
+          subValues.add(ex.DoubleCellValue(score));
         } else {
-          subValues.add(ex.CellValue.text("-"));
+          subValues.add(ex.TextCellValue("-"));
         }
       }
       double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
 
       sheet.appendRow([
-        ex.CellValue.text(s.rollNo),
-        ex.CellValue.text(s.name),
+        ex.TextCellValue(s.rollNo),
+        ex.TextCellValue(s.name),
         ...subValues,
-        ex.CellValue.number(totalObtained),
-        ex.CellValue.text('${pct.toStringAsFixed(2)}%'),
-        ex.CellValue.text(failed ? "FAIL" : "PASS")
+        ex.DoubleCellValue(totalObtained),
+        ex.TextCellValue('${pct.toStringAsFixed(2)}%'),
+        ex.TextCellValue(failed ? "FAIL" : "PASS")
       ]);
     }
 
