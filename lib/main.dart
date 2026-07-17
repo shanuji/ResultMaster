@@ -532,7 +532,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                       ElevatedButton.icon(
                         onPressed: _launchSetupWizard,
                         icon: const Icon(Icons.add),
-                        label: const Text('Create Dynamic Workbook'),
+                        label: const Text('Create New Result'),
                       )
                     ],
                   ),
@@ -1389,7 +1389,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: "Class 3 Assessment Workspace");
+    _titleController = TextEditingController(text: "Name of Class");
     _subjects = [
       SubjectSetup(name: "ENG.", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[0]),
       SubjectSetup(name: "HINDI", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[1]),
