@@ -1,4 +1,4 @@
-import 'dart:ui';
+     import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'crash_logger.dart';
 import 'log_viewer_screen.dart';
@@ -139,6 +139,7 @@ class ResultMasterWorkbookHome extends StatefulWidget {
 }
 
 class _ResultMasterWorkbookHomeState extends State<ResultMasterWorkbookHome> {
+  int _tapCount = 0;
   String? _workbookTitle;
   List<SubjectSetup> _configuredSubjects = [];
   List<StudentRow> _studentsTable = [];
@@ -303,7 +304,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
 }
 
 // ==========================================
-// WORKBOOK DASHBOARD (Now with 4 Tabs)
+// WORKBOOK DASHBOARD
 // ==========================================
 class WorkbookDashboardWidget extends StatefulWidget {
   final List<SubjectSetup> subjects;
@@ -324,7 +325,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
     final filteredStudents = widget.students.where((s) => s.name.toLowerCase().contains(_searchQuery.toLowerCase()) || s.rollNo.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
     return DefaultTabController(
-      length: 4, // Changed back to 4 tabs
+      length: 3,
       child: Column(
         children: [
           Padding(
@@ -350,7 +351,6 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
                 Tab(icon: Icon(Icons.people), text: "Master List"),
                 Tab(icon: Icon(Icons.subject), text: "Subject Sheets"),
                 Tab(icon: Icon(Icons.assignment_turned_in), text: "Final Calculation"),
-                Tab(icon: Icon(Icons.analytics), text: "Statistical Summary"), // Restored Tab
               ],
             ),
           ),
@@ -360,7 +360,6 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
                 MasterListTab(students: filteredStudents, allStudents: widget.students, onUpdate: () { widget.onStudentsUpdated(); setState(() {}); }),
                 SubjectMarksTab(subjects: widget.subjects, students: filteredStudents, allStudents: widget.students),
                 FinalSheetTab(subjects: widget.subjects, students: filteredStudents),
-                SummarySheetTab(subjects: widget.subjects, students: filteredStudents), // Restored View
               ],
             ),
           )
@@ -371,7 +370,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
 }
 
 // ==========================================
-// TAB 1: MASTER LIST 
+// TAB 1: MASTER LIST
 // ==========================================
 class MasterListTab extends StatelessWidget {
   final List<StudentRow> students;
@@ -383,18 +382,14 @@ class MasterListTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.all(8.0),
-          // FIX: Used Wrap instead of Row to stop the Hallmark/Watermark crash on small screens
-          child: Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8.0,
-            runSpacing: 8.0,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Names & Roll Numbers editable ONLY here.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12)),
+              // FIX: Wrapped text in Expanded to prevent overflow crash (Change 6)
+              const Expanded(child: Text('Names & Roll Numbers editable ONLY here.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12))),
               ElevatedButton.icon(
                 onPressed: () {
                   int nextRoll = 1;
@@ -432,59 +427,7 @@ class MasterListTab extends StatelessWidget {
 }
 
 // ==========================================
-// CUSTOM INPUT FIELD (Fixes Keypad Closing)
-// ==========================================
-class MarkInputField extends StatefulWidget {
-  final String initialValue;
-  final Function(String) onChanged;
-
-  const MarkInputField({super.key, required this.initialValue, required this.onChanged});
-
-  @override
-  State<MarkInputField> createState() => _MarkInputFieldState();
-}
-
-class _MarkInputFieldState extends State<MarkInputField> {
-  late TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialValue);
-  }
-
-  @override
-  void didUpdateWidget(covariant MarkInputField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Only update if the parent changed it externally
-    if (oldWidget.initialValue != widget.initialValue && _controller.text != widget.initialValue) {
-      _controller.text = widget.initialValue;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: _controller,
-      keyboardType: TextInputType.text,
-      textInputAction: TextInputAction.next, // Action moves to next, no manual double-jump required
-      textAlign: TextAlign.center,
-      decoration: const InputDecoration(hintText: "-", border: InputBorder.none),
-      onChanged: (val) {
-        widget.onChanged(val);
-      },
-    );
-  }
-}
-
-// ==========================================
-// TAB 2: SUBJECT SHEETS 
+// TAB 2: SUBJECT SHEETS (WITH FIXES)
 // ==========================================
 class SubjectMarksTab extends StatefulWidget {
   final List<SubjectSetup> subjects;
@@ -503,7 +446,7 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
   String _cleanMarkInput(String input, double maxAllowed) {
     String clean = input.toUpperCase().trim();
     if (clean.isEmpty) return "";
-    if (clean == "A" || clean == "AB") return clean; 
+    if (clean == "A" || clean == "AB") return clean; // Strictly allows AB/A (Change 4)
     if (!RegExp(r'^[0-9]+(\.[0-9]+)?$').hasMatch(clean)) return "";
     double? val = double.tryParse(clean);
     if (val == null || val > maxAllowed) return "";
@@ -518,10 +461,7 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
     int totalStudents = widget.allStudents.length;
     int enteredCount = widget.allStudents.where((s) => s.isSubjectAttempted(currentSub)).length;
 
-    // FIX: Header Background Color changes based on completion status
-    bool isComplete = (enteredCount == totalStudents && totalStudents > 0);
-    Color headerBgColor = isComplete ? Colors.green[200]! : Colors.red[100]!;
-
+    // Calculate Vertical Stats (Change 5)
     int passedCount = 0;
     int failedCount = 0;
     int disttCount = 0;
@@ -558,20 +498,20 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
           ),
         ),
         
-        // Header (Now dynamic color)
+        // Header
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          color: headerBgColor, 
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          color: currentSub.themeColor.withOpacity(0.15),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Subject: ${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-              Text('Entered: $enteredCount / $totalStudents', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+              Text('${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})', style: TextStyle(fontWeight: FontWeight.bold, color: currentSub.themeColor)),
+              Text('Entered: $enteredCount / $totalStudents', style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
         ),
 
-        // Vertical Stats
+        // NEW: Vertical Data Table matching screenshot 1000142476.jpg (Change 5)
         Container(
           margin: const EdgeInsets.all(8.0),
           decoration: BoxDecoration(border: Border.all(color: Colors.grey[400]!)),
@@ -612,10 +552,14 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
                       DataCell(
                         Container(
                           color: isFail ? Colors.red[100] : null,
-                          // FIX: Utilizing custom MarkInputField to maintain state/focus
-                          child: MarkInputField(
-                            key: ValueKey('${student.rollNo}_${currentSub.name}'),
-                            initialValue: student.marks[currentSub.name] ?? "",
+                          child: TextFormField(
+                            key: ValueKey('${student.rollNo}_${currentSub.name}'), // FIX: Prevents marks bleeding into other subjects (Change 2)
+                            initialValue: student.marks[currentSub.name],
+                            keyboardType: TextInputType.text,
+                            textInputAction: TextInputAction.next, // FIX: Seamless Next button typing (Change 3)
+                            onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(), // Moves to next box automatically
+                            textAlign: TextAlign.center,
+                            decoration: const InputDecoration(hintText: "-", border: InputBorder.none),
                             onChanged: (newValue) {
                               setState(() {
                                 student.marks[currentSub.name] = _cleanMarkInput(newValue, currentSub.maxMarks);
@@ -713,166 +657,4 @@ class FinalSheetTab extends StatelessWidget {
     );
   }
 }
-
-// ==========================================
-// TAB 4: RESTORED SUMMARY ENGINE
-// ==========================================
-class SummaryTableBuilder {
-  static List<DataRow> buildRows(List<SubjectSetup> subjects, List<StudentRow> students, {bool includeSumRow = true}) {
-    int grandAppeared = 0;
-    int grandPassed = 0;
-    int grandDistinction = 0;
-    Map<String, int> grandBrackets = {
-      '0-20': 0, '21-32.9': 0, '33-40': 0, '41-50': 0, '51-59.9': 0,
-      '60': 0, '61-70': 0, '71-74.9': 0, '75-80': 0, '81-90': 0,
-      '90': 0, '91-94.9': 0, '95-100': 0
-    };
-
-    final subjectRows = subjects.map((sub) {
-      int appeared = 0;
-      int passed = 0;
-      int distinction = 0;
-      double sumMarks = 0.0;
-      Map<String, int> distribution = {
-        '0-20': 0, '21-32.9': 0, '33-40': 0, '41-50': 0, '51-59.9': 0,
-        '60': 0, '61-70': 0, '71-74.9': 0, '75-80': 0, '81-90': 0,
-        '90': 0, '91-94.9': 0, '95-100': 0
-      };
-
-      for (var row in students) {
-        if (!row.isSubjectAttempted(sub)) continue;
-        double score = row.getSubjectScore(sub);
-        appeared++;
-        sumMarks += score;
-
-        if (score >= sub.passingMarks) passed++;
-        if (score >= (sub.maxMarks * 0.75)) distinction++;
-
-        if (score >= 0 && score < 21) distribution['0-20'] = distribution['0-20']! + 1;
-        else if (score >= 21 && score < 32.9) distribution['21-32.9'] = distribution['21-32.9']! + 1;
-        else if (score >= 33 && score < 40) distribution['33-40'] = distribution['33-40']! + 1;
-        else if (score >= 41 && score < 50) distribution['41-50'] = distribution['41-50']! + 1;
-        else if (score >= 51 && score < 59.9) distribution['51-59.9'] = distribution['51-59.9']! + 1;
-        else if (score == 60) distribution['60'] = distribution['60']! + 1;
-        else if (score >= 61 && score < 70) distribution['61-70'] = distribution['61-70']! + 1;
-        else if (score >= 71 && score < 74.9) distribution['71-74.9'] = distribution['71-74.9']! + 1;
-        else if (score >= 75 && score < 80) distribution['75-80'] = distribution['75-80']! + 1;
-        else if (score >= 81 && score < 90) distribution['81-90'] = distribution['81-90']! + 1;
-        else if (score == 90) distribution['90'] = distribution['90']! + 1;
-        else if (score >= 91 && score < 94.9) distribution['91-94.9'] = distribution['91-94.9']! + 1;
-        else if (score >= 95 && score <= 100) distribution['95-100'] = distribution['95-100']! + 1;
-      }
-
-      double passPct = appeared > 0 ? (passed / appeared) * 100 : 0.0;
-      double qi = appeared > 0 ? (sumMarks / appeared) : 0.0;
-
-      grandAppeared += appeared;
-      grandPassed += passed;
-      grandDistinction += distinction;
-      distribution.forEach((key, val) => grandBrackets[key] = grandBrackets[key]! + val);
-
-      return DataRow(
-        cells: [
-          DataCell(Text(sub.name, style: const TextStyle(fontWeight: FontWeight.bold))),
-          DataCell(Text(appeared.toString())),
-          DataCell(Text(passed.toString())),
-          DataCell(Text('${passPct.toStringAsFixed(2)}%')),
-          DataCell(Text(distinction.toString())),
-          DataCell(Text(qi.toStringAsFixed(2))),
-          DataCell(Text(distribution['0-20'].toString())),
-          DataCell(Text(distribution['21-32.9'].toString())),
-          DataCell(Text(distribution['33-40'].toString())),
-          DataCell(Text(distribution['41-50'].toString())),
-          DataCell(Text(distribution['51-59.9'].toString())),
-          DataCell(Text(distribution['60'].toString())),
-          DataCell(Text(distribution['61-70'].toString())),
-          DataCell(Text(distribution['71-74.9'].toString())),
-          DataCell(Text(distribution['75-80'].toString())),
-          DataCell(Text(distribution['81-90'].toString())),
-          DataCell(Text(distribution['90'].toString())),
-          DataCell(Text(distribution['91-94.9'].toString())),
-          DataCell(Text(distribution['95-100'].toString())),
-        ],
-      );
-    }).toList();
-
-    if (!includeSumRow) return subjectRows;
-
-    final sumRow = DataRow(
-      color: MaterialStateProperty.all(Colors.orange[100]),
-      cells: [
-        const DataCell(Text('SUM', style: TextStyle(fontWeight: FontWeight.bold))),
-        DataCell(Text(grandAppeared.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
-        DataCell(Text(grandPassed.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
-        const DataCell(Text('-')),
-        DataCell(Text(grandDistinction.toString(), style: const TextStyle(fontWeight: FontWeight.bold))),
-        const DataCell(Text('-')),
-        DataCell(Text(grandBrackets['0-20'].toString())),
-        DataCell(Text(grandBrackets['21-32.9'].toString())),
-        DataCell(Text(grandBrackets['33-40'].toString())),
-        DataCell(Text(grandBrackets['41-50'].toString())),
-        DataCell(Text(grandBrackets['51-59.9'].toString())),
-        DataCell(Text(grandBrackets['60'].toString())),
-        DataCell(Text(grandBrackets['61-70'].toString())),
-        DataCell(Text(grandBrackets['71-74.9'].toString())),
-        DataCell(Text(grandBrackets['75-80'].toString())),
-        DataCell(Text(grandBrackets['81-90'].toString())),
-        DataCell(Text(grandBrackets['90'].toString())),
-        DataCell(Text(grandBrackets['91-94.9'].toString())),
-        DataCell(Text(grandBrackets['95-100'].toString())),
-      ],
-    );
-
-    return [...subjectRows, sumRow];
-  }
-
-  static List<DataColumn> getColumns() {
-    return const [
-      DataColumn(label: Text('SUBJECT', style: TextStyle(fontWeight: FontWeight.bold))),
-      DataColumn(label: Text('APPEARED')),
-      DataColumn(label: Text('PASS')),
-      DataColumn(label: Text('PASS %')),
-      DataColumn(label: Text('DISTT')),
-      DataColumn(label: Text('QI (AVG)')),
-      DataColumn(label: Text('0-20')),
-      DataColumn(label: Text('21-32.9')),
-      DataColumn(label: Text('33-40')),
-      DataColumn(label: Text('41-50')),
-      DataColumn(label: Text('51-59.9')),
-      DataColumn(label: Text('60')),
-      DataColumn(label: Text('61-70')),
-      DataColumn(label: Text('71-74.9')),
-      DataColumn(label: Text('75-80')),
-      DataColumn(label: Text('81-90')),
-      DataColumn(label: Text('90')),
-      DataColumn(label: Text('91-94.9')),
-      DataColumn(label: Text('95-100')),
-    ];
-  }
-}
-
-class SummarySheetTab extends StatelessWidget {
-  final List<SubjectSetup> subjects;
-  final List<StudentRow> students;
-
-  const SummarySheetTab({super.key, required this.subjects, required this.students});
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: DataTable(
-            headingRowColor: MaterialStateProperty.all(Colors.yellow[100]),
-            border: TableBorder.all(color: Colors.grey[300]!),
-            columns: SummaryTableBuilder.getColumns(),
-            rows: SummaryTableBuilder.buildRows(subjects, students, includeSumRow: true),
-          ),
-        ),
-      ),
-    );
-  }
-}
+ 
