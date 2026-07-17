@@ -8,6 +8,7 @@ import 'package:excel/excel.dart' as ex;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -487,88 +488,63 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
     _students = widget.initialStudents;
   }
 
-  void _openBulkPasterWizard() {
-    final textController = TextEditingController();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, top: 24, left: 16, right: 16),
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.65,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Import Spreadsheet Grid', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              const Text(
-                'Copy columns from Excel and paste here.\nFormat: RollNo [Tab/Space] Name (One student per line)',
-                style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: TextField(
-                  controller: textController,
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  decoration: const InputDecoration(
-                    hintText: '1\tTanush Bhal\n2\tAarav Sharma\n3\tIsha Patel',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12.0),
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48), backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                  icon: const Icon(Icons.insert_drive_file),
-                  label: const Text('Parse Matrix & Synchronize DB'),
-                  onPressed: () async {
-                    String raw = textController.text.trim();
-                    if (raw.isEmpty) return;
+  void _openFileBrowserWizard() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        withData: true, 
+      );
 
-                    List<String> lines = const LineSplitter().convert(raw);
-                    List<StudentRow> newParsedList = [];
+      if (result != null && result.files.single.bytes != null) {
+        var bytes = result.files.single.bytes!;
+        var excel = ex.Excel.decodeBytes(bytes);
+        
+        List<StudentRow> newParsedList = [];
+        
+        // Parse the very first sheet in the document
+        for (var table in excel.tables.keys) {
+          var sheet = excel.tables[table]!;
+          for (var row in sheet.rows) {
+            if (row.length >= 2) {
+              String roll = row[0]?.value?.toString().trim() ?? '';
+              String name = row[1]?.value?.toString().trim() ?? '';
+              
+              // Ignore headers
+              if (roll.isNotEmpty && roll.toLowerCase() != 'roll no' && roll.toLowerCase() != 'rollno') {
+                if (name.isEmpty) name = "Student $roll";
+                newParsedList.add(StudentRow(rollNo: roll, name: name, marks: {}));
+              }
+            }
+          }
+          break; // Stop after first sheet to prevent duplicates
+        }
 
-                    for (var line in lines) {
-                      String segment = line.trim();
-                      if (segment.isEmpty) continue;
-
-                      List<String> parts = segment.split(RegExp(r'\s+'));
-                      if (parts.isNotEmpty) {
-                        String roll = parts[0];
-                        String name = parts.skip(1).join(" ").trim();
-                        if (name.isEmpty) name = "Student $roll";
-                        newParsedList.add(StudentRow(rollNo: roll, name: name, marks: {}));
-                      }
-                    }
-
-                    if (newParsedList.isNotEmpty) {
-                      await DatabaseHelper.instance.clearAllStudents(widget.workbookId);
-                      for (var student in newParsedList) {
-                        await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, student.rollNo, student.name);
-                      }
-                      setState(() { _students = newParsedList; });
-                      if (mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Populated ${newParsedList.length} spreadsheet records!'), backgroundColor: Colors.green));
-                      }
-                    }
-                  },
-                ),
-              )
-            ],
-          ),
-        ),
-      ),
-    );
+        if (newParsedList.isNotEmpty) {
+          await DatabaseHelper.instance.clearAllStudents(widget.workbookId);
+          for (var student in newParsedList) {
+            await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, student.rollNo, student.name);
+          }
+          setState(() { _students = newParsedList; });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Successfully imported ${newParsedList.length} students!'), backgroundColor: Colors.green));
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No valid student data found in the Excel file.'), backgroundColor: Colors.orange));
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error reading file: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   void _exportAsExcel() async {
     var excel = ex.Excel.createExcel();
-    ex.Sheet sheet = excel['Sheet1']; // FIX: Default sheet fetched directly!
+    ex.Sheet sheet = excel['Sheet1'];
 
     sheet.appendRow([
       ex.TextCellValue("Roll No"),
@@ -753,9 +729,9 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                           children: [
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[50]),
-                              onPressed: _openBulkPasterWizard,
-                              icon: const Icon(Icons.cloud_upload, size: 18),
-                              label: const Text('Paste Excel Grid'),
+                              onPressed: _openFileBrowserWizard,
+                              icon: const Icon(Icons.file_upload, size: 18),
+                              label: const Text('Upload Excel File'),
                             ),
                             ElevatedButton.icon(
                               onPressed: () async {
