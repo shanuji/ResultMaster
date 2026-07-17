@@ -60,7 +60,7 @@ class ResultMasterApp extends StatelessWidget {
 }
 
 // ==========================================
-// DATA MODELS
+// DATA MODELS (Supports Bifurcation & Pass/Fail toggle)
 // ==========================================
 class SubjectComponent {
   String name;
@@ -88,7 +88,9 @@ class SubjectSetup {
   }) : components = components ?? [];
 
   void recalculateMaxMarks() {
-    if (components.isNotEmpty) maxMarks = components.fold(0.0, (sum, c) => sum + c.maxMarks);
+    if (components.isNotEmpty) {
+      maxMarks = components.fold(0.0, (sum, c) => sum + c.maxMarks);
+    }
   }
 }
 
@@ -214,7 +216,7 @@ class _ResultMasterWorkbookHomeState extends State<ResultMasterWorkbookHome> {
 }
 
 // ==========================================
-// SETUP WIZARD
+// SETUP WIZARD (BIFURCATION & PASS/FAIL TOGGLE)
 // ==========================================
 class SetupWizardWidget extends StatefulWidget {
   final List<Color> palette;
@@ -243,8 +245,6 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
       _subjects = [
         SubjectSetup(name: "ENG.", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[0]),
         SubjectSetup(name: "HINDI", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[1]),
-        SubjectSetup(name: "MATH", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[2]),
-        SubjectSetup(name: "SCIENCE", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[3]),
       ];
     }
   }
@@ -266,40 +266,163 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
           TextField(controller: _titleController, decoration: const InputDecoration(labelText: 'Workbook Title', border: OutlineInputBorder())),
           const SizedBox(height: 12),
           Expanded(
-            child: ListView.builder(
-              itemCount: _subjects.length,
-              itemBuilder: (context, index) {
-                final sub = _subjects[index];
-                return Card(
-                  child: Container(
-                    decoration: BoxDecoration(border: Border(left: BorderSide(color: sub.themeColor, width: 6))),
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      children: [
-                        TextFormField(
-                          initialValue: sub.name,
-                          decoration: const InputDecoration(labelText: 'Subject Name'),
-                          onChanged: (val) => sub.name = val,
-                        ),
-                        Row(
-                          children: [
-                            Expanded(child: TextFormField(initialValue: sub.maxMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Max Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)),
-                            const SizedBox(width: 12),
-                            Expanded(child: TextFormField(initialValue: sub.passingMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Pass Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0)),
-                          ],
-                        ),
-                      ],
+            child: ListView(
+              children: [
+                ..._subjects.asMap().entries.map((entry) {
+                  int index = entry.key;
+                  SubjectSetup sub = entry.value;
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 2.0),
+                    child: Container(
+                      decoration: BoxDecoration(border: Border(left: BorderSide(color: sub.themeColor, width: 6))),
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  initialValue: sub.name,
+                                  decoration: const InputDecoration(labelText: 'Subject Name', labelStyle: TextStyle(fontWeight: FontWeight.bold)),
+                                  onChanged: (val) => sub.name = val,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => setState(() => _subjects.removeAt(index)),
+                              )
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  key: ValueKey('${sub.name}max${sub.components.length}'), 
+                                  initialValue: sub.maxMarks.toStringAsFixed(0),
+                                  decoration: InputDecoration(labelText: 'Total Max Marks', filled: sub.components.isNotEmpty, fillColor: Colors.grey[200]),
+                                  keyboardType: TextInputType.number,
+                                  enabled: sub.components.isEmpty, 
+                                  onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  initialValue: sub.passingMarks.toStringAsFixed(0),
+                                  decoration: const InputDecoration(labelText: 'Pass Marks'),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Bifurcations (e.g. Theory/Prac):', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+                              TextButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    sub.components.add(SubjectComponent(name: 'Part ${sub.components.length + 1}', maxMarks: 50));
+                                    sub.recalculateMaxMarks();
+                                  });
+                                },
+                                icon: const Icon(Icons.add, size: 16),
+                                label: const Text('Add Component'),
+                              )
+                            ],
+                          ),
+                          if (sub.components.isNotEmpty)
+                            ...sub.components.asMap().entries.map((compEntry) {
+                              int cIndex = compEntry.key;
+                              var comp = compEntry.value;
+                              return Padding(
+                                padding: const EdgeInsets.only(left: 16.0, top: 4.0),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        initialValue: comp.name,
+                                        decoration: const InputDecoration(labelText: 'Comp. Name', isDense: true),
+                                        onChanged: (val) => comp.name = val,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextFormField(
+                                        initialValue: comp.maxMarks.toStringAsFixed(0),
+                                        decoration: const InputDecoration(labelText: 'Max Marks', isDense: true),
+                                        keyboardType: TextInputType.number,
+                                        onChanged: (val) {
+                                          comp.maxMarks = double.tryParse(val) ?? 0.0;
+                                          setState(() => sub.recalculateMaxMarks());
+                                        },
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close, size: 20, color: Colors.grey),
+                                      onPressed: () {
+                                        setState(() {
+                                          sub.components.removeAt(cIndex);
+                                          sub.recalculateMaxMarks();
+                                        });
+                                      },
+                                    )
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                            
+                          const Divider(height: 24),
+                          
+                          // NEW: Pass/Fail Toggle
+                          SwitchListTile(
+                            title: const Text('Count towards Final Pass/Fail Result', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                            subtitle: const Text('If off, failing this subject won\'t fail the student.', style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic)),
+                            value: sub.includeInPassFail,
+                            activeColor: sub.themeColor,
+                            onChanged: (bool value) {
+                              setState(() {
+                                sub.includeInPassFail = value;
+                              });
+                            },
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
                     ),
+                  );
+                }).toList(),
+                
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _subjects.add(SubjectSetup(
+                          name: "NEW SUBJECT", 
+                          maxMarks: 100, 
+                          passingMarks: 33, 
+                          themeColor: widget.palette[_subjects.length % widget.palette.length]
+                        ));
+                      });
+                    },
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('Add Another Subject'),
                   ),
-                );
-              },
+                )
+              ],
             ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12.0),
             child: ElevatedButton(
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
               onPressed: () { Navigator.pop(context); widget.onSetupComplete(_titleController.text, _subjects); },
-              child: const Text('Save Setup & Build Sheets'),
+              child: const Text('Save Setup & Build Sheets', style: TextStyle(fontSize: 16)),
             ),
           )
         ],
@@ -459,7 +582,6 @@ class _MarkInputFieldState extends State<MarkInputField> {
     _controller = TextEditingController(text: widget.initialValue);
     _focusNode = FocusNode();
     
-    // Listens for when the cursor leaves the box
     _focusNode.addListener(() {
       if (!_focusNode.hasFocus) {
         widget.onFocusLostOrSubmitted(_controller.text);
@@ -499,7 +621,7 @@ class _MarkInputFieldState extends State<MarkInputField> {
 }
 
 // ==========================================
-// TAB 2: SUBJECT SHEETS 
+// TAB 2: SUBJECT SHEETS (Supports Dynamic Columns)
 // ==========================================
 class SubjectMarksTab extends StatefulWidget {
   final List<SubjectSetup> subjects;
@@ -528,6 +650,11 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
   @override
   Widget build(BuildContext context) {
     if (widget.subjects.isEmpty) return const Center(child: Text("No subjects configured."));
+    
+    if (_selectedSubjectIndex >= widget.subjects.length) {
+      _selectedSubjectIndex = 0;
+    }
+    
     final currentSub = widget.subjects[_selectedSubjectIndex];
 
     int totalStudents = widget.allStudents.length;
@@ -550,6 +677,19 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
       }
     }
     double qi = enteredCount > 0 ? (sumMarks / enteredCount) : 0.0;
+
+    List<DataColumn> gridColumns = [
+      const DataColumn(label: Text('Roll No')), 
+      const DataColumn(label: Text('Name')), 
+    ];
+
+    if (currentSub.components.isEmpty) {
+      gridColumns.add(DataColumn(label: Text('Marks\n(Max: ${currentSub.maxMarks.toStringAsFixed(0)})')));
+    } else {
+      for (var c in currentSub.components) {
+        gridColumns.add(DataColumn(label: Text('${c.name}\n(Max: ${c.maxMarks.toStringAsFixed(0)})')));
+      }
+    }
 
     return Column(
       children: [
@@ -607,37 +747,58 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                columns: [
-                  const DataColumn(label: Text('Roll No')), 
-                  const DataColumn(label: Text('Name')), 
-                  DataColumn(label: Text('Marks\n(Max: ${currentSub.maxMarks.toStringAsFixed(0)})'))
-                ],
+                columns: gridColumns,
                 rows: widget.students.map((student) {
-                  bool isFail = student.isSubjectAttempted(currentSub) && student.getSubjectScore(currentSub) < currentSub.passingMarks && (student.marks[currentSub.name] != "A" && student.marks[currentSub.name] != "AB");
+                  bool isFail = student.isSubjectAttempted(currentSub) && student.getSubjectScore(currentSub) < currentSub.passingMarks;
+                  Color? cellColor = isFail ? Colors.red[100] : null;
 
-                  return DataRow(
-                    cells: [
-                      DataCell(Text(student.rollNo)),
-                      DataCell(Text(student.name)),
+                  List<DataCell> rowCells = [
+                    DataCell(Text(student.rollNo)),
+                    DataCell(Text(student.name)),
+                  ];
+
+                  if (currentSub.components.isEmpty) {
+                    rowCells.add(
                       DataCell(
                         Container(
-                          color: isFail ? Colors.red[100] : null,
+                          color: cellColor,
                           child: MarkInputField(
                             key: ValueKey('${student.rollNo}_${currentSub.name}'),
                             initialValue: student.marks[currentSub.name] ?? "",
                             onFocusLostOrSubmitted: (newValue) {
                               final cleaned = _cleanMarkInput(newValue, currentSub.maxMarks);
                               if (student.marks[currentSub.name] != cleaned) {
-                                setState(() {
-                                  student.marks[currentSub.name] = cleaned;
-                                });
+                                setState(() { student.marks[currentSub.name] = cleaned; });
                               }
                             },
                           ),
                         ),
                       ),
-                    ],
-                  );
+                    );
+                  } else {
+                    for (var c in currentSub.components) {
+                      String markKey = '${currentSub.name}_${c.name}';
+                      rowCells.add(
+                        DataCell(
+                          Container(
+                            color: cellColor,
+                            child: MarkInputField(
+                              key: ValueKey('${student.rollNo}_$markKey'),
+                              initialValue: student.marks[markKey] ?? "",
+                              onFocusLostOrSubmitted: (newValue) {
+                                final cleaned = _cleanMarkInput(newValue, c.maxMarks);
+                                if (student.marks[markKey] != cleaned) {
+                                  setState(() { student.marks[markKey] = cleaned; });
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  }
+
+                  return DataRow(cells: rowCells);
                 }).toList(),
               ),
             ),
@@ -669,7 +830,7 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
 }
 
 // ==========================================
-// TAB 3: FINAL CALCULATION (With Sorting!)
+// TAB 3: FINAL CALCULATION (Sorting & Pass/Fail toggle logic)
 // ==========================================
 class FinalSheetTab extends StatefulWidget {
   final List<SubjectSetup> subjects;
@@ -767,13 +928,29 @@ class _FinalSheetTabState extends State<FinalSheetTab> {
             double totalMax = 0.0;
             bool failed = false;
 
+            List<DataCell> subjectCells = [];
+
             for (var sub in widget.subjects) {
               totalMax += sub.maxMarks;
+              String displayMark = "-";
+
               if (student.isSubjectAttempted(sub)) {
                 double score = student.getSubjectScore(sub);
                 totalObtained += score;
-                if (score < sub.passingMarks) failed = true;
+                
+                // NEW: Check if this subject should trigger a failure
+                if (sub.includeInPassFail && score < sub.passingMarks) {
+                  failed = true; 
+                }
+
+                if (sub.components.isEmpty && (student.marks[sub.name] == "A" || student.marks[sub.name] == "AB")) {
+                  displayMark = student.marks[sub.name]!;
+                } else {
+                  displayMark = score.toStringAsFixed(1);
+                  if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2);
+                }
               }
+              subjectCells.add(DataCell(Text(displayMark)));
             }
 
             double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
@@ -782,7 +959,7 @@ class _FinalSheetTabState extends State<FinalSheetTab> {
               cells: [
                 DataCell(Text(student.rollNo)),
                 DataCell(Text(student.name)),
-                ...widget.subjects.map((sub) => DataCell(Text(student.isSubjectAttempted(sub) ? student.marks[sub.name] ?? "-" : "-"))),
+                ...subjectCells,
                 DataCell(Text(totalObtained.toStringAsFixed(1))),
                 DataCell(Text('${pct.toStringAsFixed(2)}%')),
                 DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold))),
