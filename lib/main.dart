@@ -668,7 +668,7 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
           title: Text(_currentTitle),
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           actions: [
-            IconButton(icon: const Icon(Icons.ios_share), title: 'Export Matrix', onPressed: _triggerStructuredExport),
+            IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Export Matrix', onPressed: _triggerStructuredExport),
           ],
           bottom: const TabBar(
             isScrollable: true,
