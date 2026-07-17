@@ -1,4 +1,4 @@
-     import 'dart:ui';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'crash_logger.dart';
 import 'log_viewer_screen.dart';
@@ -139,7 +139,6 @@ class ResultMasterWorkbookHome extends StatefulWidget {
 }
 
 class _ResultMasterWorkbookHomeState extends State<ResultMasterWorkbookHome> {
-  int _tapCount = 0;
   String? _workbookTitle;
   List<SubjectSetup> _configuredSubjects = [];
   List<StudentRow> _studentsTable = [];
@@ -304,7 +303,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
 }
 
 // ==========================================
-// WORKBOOK DASHBOARD
+// WORKBOOK DASHBOARD (Now with 4 Tabs)
 // ==========================================
 class WorkbookDashboardWidget extends StatefulWidget {
   final List<SubjectSetup> subjects;
@@ -325,7 +324,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
     final filteredStudents = widget.students.where((s) => s.name.toLowerCase().contains(_searchQuery.toLowerCase()) || s.rollNo.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
     return DefaultTabController(
-      length: 3,
+      length: 4, // Changed back to 4 tabs
       child: Column(
         children: [
           Padding(
@@ -351,6 +350,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
                 Tab(icon: Icon(Icons.people), text: "Master List"),
                 Tab(icon: Icon(Icons.subject), text: "Subject Sheets"),
                 Tab(icon: Icon(Icons.assignment_turned_in), text: "Final Calculation"),
+                Tab(icon: Icon(Icons.analytics), text: "Statistical Summary"), // Restored Tab
               ],
             ),
           ),
@@ -360,6 +360,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
                 MasterListTab(students: filteredStudents, allStudents: widget.students, onUpdate: () { widget.onStudentsUpdated(); setState(() {}); }),
                 SubjectMarksTab(subjects: widget.subjects, students: filteredStudents, allStudents: widget.students),
                 FinalSheetTab(subjects: widget.subjects, students: filteredStudents),
+                SummarySheetTab(subjects: widget.subjects, students: filteredStudents), // Restored View
               ],
             ),
           )
@@ -370,7 +371,7 @@ class _WorkbookDashboardWidgetState extends State<WorkbookDashboardWidget> {
 }
 
 // ==========================================
-// TAB 1: MASTER LIST
+// TAB 1: MASTER LIST 
 // ==========================================
 class MasterListTab extends StatelessWidget {
   final List<StudentRow> students;
@@ -382,14 +383,18 @@ class MasterListTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.all(8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // FIX: Used Wrap instead of Row to stop the Hallmark/Watermark crash on small screens
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8.0,
+            runSpacing: 8.0,
             children: [
-              // FIX: Wrapped text in Expanded to prevent overflow crash (Change 6)
-              const Expanded(child: Text('Names & Roll Numbers editable ONLY here.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12))),
+              const Text('Names & Roll Numbers editable ONLY here.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12)),
               ElevatedButton.icon(
                 onPressed: () {
                   int nextRoll = 1;
@@ -427,7 +432,59 @@ class MasterListTab extends StatelessWidget {
 }
 
 // ==========================================
-// TAB 2: SUBJECT SHEETS (WITH FIXES)
+// CUSTOM INPUT FIELD (Fixes Keypad Closing)
+// ==========================================
+class MarkInputField extends StatefulWidget {
+  final String initialValue;
+  final Function(String) onChanged;
+
+  const MarkInputField({super.key, required this.initialValue, required this.onChanged});
+
+  @override
+  State<MarkInputField> createState() => _MarkInputFieldState();
+}
+
+class _MarkInputFieldState extends State<MarkInputField> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void didUpdateWidget(covariant MarkInputField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only update if the parent changed it externally
+    if (oldWidget.initialValue != widget.initialValue && _controller.text != widget.initialValue) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: _controller,
+      keyboardType: TextInputType.text,
+      textInputAction: TextInputAction.next, // Action moves to next, no manual double-jump required
+      textAlign: TextAlign.center,
+      decoration: const InputDecoration(hintText: "-", border: InputBorder.none),
+      onChanged: (val) {
+        widget.onChanged(val);
+      },
+    );
+  }
+}
+
+// ==========================================
+// TAB 2: SUBJECT SHEETS 
 // ==========================================
 class SubjectMarksTab extends StatefulWidget {
   final List<SubjectSetup> subjects;
@@ -446,7 +503,7 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
   String _cleanMarkInput(String input, double maxAllowed) {
     String clean = input.toUpperCase().trim();
     if (clean.isEmpty) return "";
-    if (clean == "A" || clean == "AB") return clean; // Strictly allows AB/A (Change 4)
+    if (clean == "A" || clean == "AB") return clean; 
     if (!RegExp(r'^[0-9]+(\.[0-9]+)?$').hasMatch(clean)) return "";
     double? val = double.tryParse(clean);
     if (val == null || val > maxAllowed) return "";
@@ -461,7 +518,10 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
     int totalStudents = widget.allStudents.length;
     int enteredCount = widget.allStudents.where((s) => s.isSubjectAttempted(currentSub)).length;
 
-    // Calculate Vertical Stats (Change 5)
+    // FIX: Header Background Color changes based on completion status
+    bool isComplete = (enteredCount == totalStudents && totalStudents > 0);
+    Color headerBgColor = isComplete ? Colors.green[200]! : Colors.red[100]!;
+
     int passedCount = 0;
     int failedCount = 0;
     int disttCount = 0;
@@ -475,186 +535,4 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
         if (score >= (currentSub.maxMarks * 0.75)) disttCount++;
       }
     }
-    double qi = enteredCount > 0 ? (sumMarks / enteredCount) : 0.0;
-
-    return Column(
-      children: [
-        // Subject Selector
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.all(8),
-          child: Row(
-            children: widget.subjects.asMap().entries.map((entry) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: ChoiceChip(
-                  label: Text(entry.value.name),
-                  selected: entry.key == _selectedSubjectIndex,
-                  selectedColor: entry.value.themeColor.withOpacity(0.4),
-                  onSelected: (selected) { if (selected) setState(() => _selectedSubjectIndex = entry.key); },
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        
-        // Header
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          color: currentSub.themeColor.withOpacity(0.15),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})', style: TextStyle(fontWeight: FontWeight.bold, color: currentSub.themeColor)),
-              Text('Entered: $enteredCount / $totalStudents', style: const TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ),
-
-        // NEW: Vertical Data Table matching screenshot 1000142476.jpg (Change 5)
-        Container(
-          margin: const EdgeInsets.all(8.0),
-          decoration: BoxDecoration(border: Border.all(color: Colors.grey[400]!)),
-          child: IntrinsicWidth(
-            child: Column(
-              children: [
-                _buildStatRow("Passed", passedCount.toString()),
-                _buildStatRow("Failed", failedCount.toString()),
-                _buildStatRow("QI", qi.toStringAsFixed(2)),
-                const Divider(height: 1, thickness: 1),
-                _buildStatRow("DISTT", disttCount.toString(), isWhite: true),
-              ],
-            ),
-          ),
-        ),
-        
-        const Divider(height: 1, thickness: 2),
-
-        // Marks Entry Grid
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columns: [
-                  const DataColumn(label: Text('Roll No')), 
-                  const DataColumn(label: Text('Name')), 
-                  DataColumn(label: Text('Marks\n(Max: ${currentSub.maxMarks.toStringAsFixed(0)})'))
-                ],
-                rows: widget.students.map((student) {
-                  bool isFail = student.isSubjectAttempted(currentSub) && student.getSubjectScore(currentSub) < currentSub.passingMarks && (student.marks[currentSub.name] != "A" && student.marks[currentSub.name] != "AB");
-
-                  return DataRow(
-                    cells: [
-                      DataCell(Text(student.rollNo)),
-                      DataCell(Text(student.name)),
-                      DataCell(
-                        Container(
-                          color: isFail ? Colors.red[100] : null,
-                          child: TextFormField(
-                            key: ValueKey('${student.rollNo}_${currentSub.name}'), // FIX: Prevents marks bleeding into other subjects (Change 2)
-                            initialValue: student.marks[currentSub.name],
-                            keyboardType: TextInputType.text,
-                            textInputAction: TextInputAction.next, // FIX: Seamless Next button typing (Change 3)
-                            onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(), // Moves to next box automatically
-                            textAlign: TextAlign.center,
-                            decoration: const InputDecoration(hintText: "-", border: InputBorder.none),
-                            onChanged: (newValue) {
-                              setState(() {
-                                student.marks[currentSub.name] = _cleanMarkInput(newValue, currentSub.maxMarks);
-                              });
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatRow(String label, String value, {bool isWhite = false}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 80,
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          color: isWhite ? Colors.white : Colors.grey[200],
-          child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        Container(
-          width: 60,
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          decoration: BoxDecoration(border: Border(left: BorderSide(color: Colors.grey[400]!))),
-          child: Text(value, textAlign: TextAlign.center),
-        ),
-      ],
-    );
-  }
-}
-
-// ==========================================
-// TAB 3: FINAL CALCULATION
-// ==========================================
-class FinalSheetTab extends StatelessWidget {
-  final List<SubjectSetup> subjects;
-  final List<StudentRow> students;
-
-  const FinalSheetTab({super.key, required this.subjects, required this.students});
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowColor: MaterialStateProperty.all(Colors.blue[50]),
-          columns: [
-            const DataColumn(label: Text('Roll No')),
-            const DataColumn(label: Text('Name')),
-            ...subjects.map((sub) => DataColumn(label: Text(sub.name))),
-            const DataColumn(label: Text('Total')),
-            const DataColumn(label: Text('%')),
-            const DataColumn(label: Text('Result')),
-          ],
-          rows: students.map((student) {
-            double totalObtained = 0.0;
-            double totalMax = 0.0;
-            bool failed = false;
-
-            for (var sub in subjects) {
-              totalMax += sub.maxMarks;
-              if (student.isSubjectAttempted(sub)) {
-                double score = student.getSubjectScore(sub);
-                totalObtained += score;
-                if (score < sub.passingMarks) failed = true;
-              }
-            }
-
-            double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-
-            return DataRow(
-              cells: [
-                DataCell(Text(student.rollNo)),
-                DataCell(Text(student.name)),
-                ...subjects.map((sub) => DataCell(Text(student.isSubjectAttempted(sub) ? student.marks[sub.name] ?? "-" : "-"))),
-                DataCell(Text(totalObtained.toStringAsFixed(1))),
-                DataCell(Text('${pct.toStringAsFixed(2)}%')),
-                DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold))),
-              ],
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-}
- 
+    double qi = enteredCount > 0 ? (sumMarks / enteredCount) : 0
