@@ -19,14 +19,36 @@ class SubjectMarksTab extends StatefulWidget {
 class _SubjectMarksTabState extends State<SubjectMarksTab> {
   int _selectedSubjectIndex = 0;
 
-  String _cleanMarkInput(String input, double maxAllowed) {
+  // Modified validation engine to return specific errors
+  String? _validateAndCleanInput(String input, double maxAllowed, String studentName, String componentName) {
     String clean = input.toUpperCase().trim();
     if (clean.isEmpty) return "";
     if (clean == "A" || clean == "AB") return clean; 
-    if (!RegExp(r'^[0-9]+(\.[0-9]+)?$').hasMatch(clean)) return "";
+    
+    if (!RegExp(r'^[0-9]+(\.[0-9]+)?$').hasMatch(clean)) {
+      _showValidationError("Invalid characters entered for $studentName.");
+      return null;
+    }
+    
     double? val = double.tryParse(clean);
-    if (val == null || val > maxAllowed) return "";
+    if (val == null || val > maxAllowed) {
+      _showValidationError("Invalid! $studentName's score in $componentName cannot exceed ${maxAllowed.toStringAsFixed(0)}.");
+      return null;
+    }
+    
     return clean;
+  }
+
+  void _showValidationError(String message) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.redAccent,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -140,18 +162,24 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
                   ];
 
                   if (currentSub.components.isEmpty) {
+                    final currentVal = student.marks[currentSub.name] ?? "";
                     rowCells.add(
                       DataCell(
                         Container(
                           color: cellColor,
                           child: MarkInputField(
-                            key: ValueKey('${student.rollNo}_${currentSub.name}'),
-                            initialValue: student.marks[currentSub.name] ?? "",
+                            // Adding ValueKey with value ensures field completely resets text on invalid changes
+                            key: ValueKey('${student.rollNo}${currentSub.name}$currentVal'),
+                            initialValue: currentVal,
                             onFocusLostOrSubmitted: (newValue) {
-                              final cleaned = _cleanMarkInput(newValue, currentSub.maxMarks);
-                              if (student.marks[currentSub.name] != cleaned) {
-                                setState(() { student.marks[currentSub.name] = cleaned; });
-                              }
+                              final verified = _validateAndCleanInput(newValue, currentSub.maxMarks, student.name, currentSub.name);
+                              
+                              // Trigger state rebuild always if invalid to strip the bad typed number from view
+                              setState(() {
+                                if (verified != null) {
+                                  student.marks[currentSub.name] = verified;
+                                }
+                              });
                             },
                           ),
                         ),
@@ -160,18 +188,22 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
                   } else {
                     for (var c in currentSub.components) {
                       String markKey = '${currentSub.name}_${c.name}';
+                      final currentVal = student.marks[markKey] ?? "";
                       rowCells.add(
                         DataCell(
                           Container(
                             color: cellColor,
                             child: MarkInputField(
-                              key: ValueKey('${student.rollNo}_$markKey'),
-                              initialValue: student.marks[markKey] ?? "",
+                              key: ValueKey('${student.rollNo}${markKey}$currentVal'),
+                              initialValue: currentVal,
                               onFocusLostOrSubmitted: (newValue) {
-                                final cleaned = _cleanMarkInput(newValue, c.maxMarks);
-                                if (student.marks[markKey] != cleaned) {
-                                  setState(() { student.marks[markKey] = cleaned; });
-                                }
+                                final verified = _validateAndCleanInput(newValue, c.maxMarks, student.name, c.name);
+                                
+                                setState(() {
+                                  if (verified != null) {
+                                    student.marks[markKey] = verified;
+                                  }
+                                });
                               },
                             ),
                           ),
