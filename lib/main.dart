@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io'; // Required for writing the crash log to a file
+import 'dart:io'; 
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,20 +33,17 @@ void logCrash(String error, String stackTrace) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Catch layout and UI errors
   FlutterError.onError = (FlutterErrorDetails details) {
     debugPrint('🔴 UI CRASH CAUGHT: ${details.exceptionAsString()}');
     logCrash('UI CRASH: ${details.exceptionAsString()}', details.stack.toString());
   };
 
-  // 2. Catch asynchronous and background errors
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('🔴 ASYNC CRASH CAUGHT: $error');
     logCrash('ASYNC CRASH: $error', stack.toString());
-    return true; // Prevents the app from instantly crashing
+    return true; 
   };
 
-  // 3. Keep the custom error screen for layout bugs
   ErrorWidget.builder = (FlutterErrorDetails details) {
     return Material(
       color: Colors.white,
@@ -176,7 +173,7 @@ class DatabaseHelper {
       });
     }
 
-    List<String> defaultNames = ["Student 1", "Student 2", "Student 3", "Student 4"];
+    List<String> defaultNames = ["Tanush Bhal", "Aarav Sharma", "Isha Patel", "Reyansh Gupta"];
     for (int i = 0; i < defaultNames.length; i++) {
       await db.insert('students', {
         'workbook_id': workbookId,
@@ -186,6 +183,28 @@ class DatabaseHelper {
       });
     }
     return workbookId;
+  }
+
+  // NEW: Update existing workbook and subjects
+  Future<void> updateWorkbookSetup(int workbookId, String newTitle, List<SubjectSetup> newSubjects) async {
+    final db = await instance.database;
+    
+    await db.update('workbooks', {'title': newTitle}, where: 'id = ?', whereArgs: [workbookId]);
+    
+    // Delete old subjects and replace with updated ones
+    await db.delete('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
+    for (var sub in newSubjects) {
+      List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks}).toList();
+      await db.insert('subjects', {
+        'workbook_id': workbookId,
+        'name': sub.name,
+        'max_marks': sub.maxMarks,
+        'passing_marks': sub.passingMarks,
+        'include_in_pass_fail': sub.includeInPassFail ? 1 : 0,
+        'theme_color': sub.themeColor.value,
+        'components_json': jsonEncode(comps),
+      });
+    }
   }
 
   Future<void> deleteWorkbook(int id) async {
@@ -350,7 +369,7 @@ class StudentRow {
 }
 
 // ==========================================
-// NEW: IN-APP LOG VIEWER SCREEN
+// IN-APP LOG VIEWER SCREEN
 // ==========================================
 class CrashLogScreen extends StatefulWidget {
   const CrashLogScreen({super.key});
@@ -400,19 +419,12 @@ class _CrashLogScreenState extends State<CrashLogScreen> {
         title: const Text('Crash Logs'),
         backgroundColor: Colors.red[100],
         actions: [
-          IconButton(
-            icon: const Icon(Icons.delete),
-            tooltip: 'Clear Logs',
-            onPressed: _clearLogs,
-          ),
+          IconButton(icon: const Icon(Icons.delete), tooltip: 'Clear Logs', onPressed: _clearLogs),
         ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
-        child: SelectableText(
-          _logs,
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-        ),
+        child: SelectableText(_logs, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
       ),
     );
   }
@@ -532,7 +544,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                       ElevatedButton.icon(
                         onPressed: _launchSetupWizard,
                         icon: const Icon(Icons.add),
-                        label: const Text('Create New Result'),
+                        label: const Text('Create Dynamic Workbook'),
                       )
                     ],
                   ),
@@ -600,6 +612,29 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
     _students = widget.initialStudents;
   }
 
+  void _openEditSetup() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => SetupWizardWidget(
+        palette: const [Colors.blue, Colors.purple, Colors.teal, Colors.indigo, Colors.pink, Colors.orange, Colors.cyan, Colors.green],
+        initialTitle: _currentTitle,
+        initialSubjects: _subjects,
+        onSetupComplete: (title, subjects) async {
+          await DatabaseHelper.instance.updateWorkbookSetup(widget.workbookId, title, subjects);
+          setState(() {
+            _currentTitle = title;
+            _subjects = subjects;
+          });
+          if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Workbook setup updated successfully!'), backgroundColor: Colors.green));
+          }
+        },
+      ),
+    );
+  }
+
   void _openFileBrowserWizard() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -614,7 +649,6 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
         
         List<StudentRow> newParsedList = [];
         
-        // Parse the very first sheet in the document
         for (var table in excel.tables.keys) {
           var sheet = excel.tables[table]!;
           for (var row in sheet.rows) {
@@ -622,14 +656,13 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
               String roll = row[0]?.value?.toString().trim() ?? '';
               String name = row[1]?.value?.toString().trim() ?? '';
               
-              // Ignore headers
               if (roll.isNotEmpty && roll.toLowerCase() != 'roll no' && roll.toLowerCase() != 'rollno') {
                 if (name.isEmpty) name = "Student $roll";
                 newParsedList.add(StudentRow(rollNo: roll, name: name, marks: {}));
               }
             }
           }
-          break; // Stop after first sheet to prevent duplicates
+          break; 
         }
 
         if (newParsedList.isNotEmpty) {
@@ -799,6 +832,7 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
           title: Text(_currentTitle),
           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           actions: [
+            IconButton(icon: const Icon(Icons.edit), tooltip: 'Edit Workbook Setup', onPressed: _openEditSetup),
             IconButton(icon: const Icon(Icons.download), tooltip: 'Download Records', onPressed: _showExportOptions),
           ],
           bottom: const TabBar(
@@ -1366,15 +1400,19 @@ class SummarySheetTabWidget extends StatelessWidget {
 }
 
 // ==========================================
-// CONFIGURATION SETUP WIZARD
+// CONFIGURATION SETUP WIZARD (Supports Editing)
 // ==========================================
 class SetupWizardWidget extends StatefulWidget {
   final List<Color> palette;
+  final String? initialTitle;
+  final List<SubjectSetup>? initialSubjects;
   final Function(String, List<SubjectSetup>) onSetupComplete;
 
   const SetupWizardWidget({
     super.key, 
     required this.palette, 
+    this.initialTitle,
+    this.initialSubjects,
     required this.onSetupComplete, 
   });
 
@@ -1389,11 +1427,23 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: "Name of Class");
-    _subjects = [
-      SubjectSetup(name: "ENG.", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[0]),
-      SubjectSetup(name: "HINDI", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[1]),
-    ];
+    _titleController = TextEditingController(text: widget.initialTitle ?? "Class 3 Assessment Workspace");
+    
+    if (widget.initialSubjects != null) {
+      _subjects = widget.initialSubjects!.map((s) => SubjectSetup(
+        name: s.name,
+        maxMarks: s.maxMarks,
+        passingMarks: s.passingMarks,
+        includeInPassFail: s.includeInPassFail,
+        themeColor: s.themeColor,
+        components: s.components.map((c) => SubjectComponent(name: c.name, maxMarks: c.maxMarks)).toList()
+      )).toList();
+    } else {
+      _subjects = [
+        SubjectSetup(name: "ENG.", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[0]),
+        SubjectSetup(name: "HINDI", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[1]),
+      ];
+    }
   }
 
   @override
@@ -1406,7 +1456,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Configure Setup', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(widget.initialTitle != null ? 'Edit Setup' : 'Configure Setup', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
             ],
           ),
@@ -1491,7 +1541,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
                 Navigator.pop(context); 
                 widget.onSetupComplete(_titleController.text, _subjects); 
               },
-              child: const Text('Save Setup & Build Sheets', style: TextStyle(fontSize: 16)),
+              child: Text(widget.initialTitle != null ? 'Save Changes' : 'Save Setup & Build Sheets', style: const TextStyle(fontSize: 16)),
             ),
           )
         ],
