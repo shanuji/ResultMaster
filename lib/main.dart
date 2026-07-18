@@ -185,13 +185,11 @@ class DatabaseHelper {
     return workbookId;
   }
 
-  // NEW: Update existing workbook and subjects
   Future<void> updateWorkbookSetup(int workbookId, String newTitle, List<SubjectSetup> newSubjects) async {
     final db = await instance.database;
     
     await db.update('workbooks', {'title': newTitle}, where: 'id = ?', whereArgs: [workbookId]);
     
-    // Delete old subjects and replace with updated ones
     await db.delete('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
     for (var sub in newSubjects) {
       List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks}).toList();
@@ -950,13 +948,21 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
 }
 
 // ==========================================
-// CUSTOM INPUT FIELD (Focus-Aware Fix)
+// FIXED: FLICKER-FREE & FOCUS-AWARE INPUT FIELD
 // ==========================================
 class MarkInputField extends StatefulWidget {
   final String initialValue;
+  final FocusNode focusNode;
   final Function(String) onFocusLostOrSubmitted;
+  final VoidCallback? onNext;
 
-  const MarkInputField({super.key, required this.initialValue, required this.onFocusLostOrSubmitted});
+  const MarkInputField({
+    super.key, 
+    required this.initialValue, 
+    required this.focusNode,
+    required this.onFocusLostOrSubmitted,
+    this.onNext,
+  });
 
   @override
   State<MarkInputField> createState() => _MarkInputFieldState();
@@ -964,18 +970,14 @@ class MarkInputField extends StatefulWidget {
 
 class _MarkInputFieldState extends State<MarkInputField> {
   late TextEditingController _controller;
-  late FocusNode _focusNode;
+  String _lastSavedValue = '';
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue);
-    _focusNode = FocusNode();
-    _focusNode.addListener(() {
-      if (!_focusNode.hasFocus) {
-        widget.onFocusLostOrSubmitted(_controller.text);
-      }
-    });
+    _lastSavedValue = widget.initialValue;
+    widget.focusNode.addListener(_handleFocusChange);
   }
 
   @override
@@ -983,32 +985,56 @@ class _MarkInputFieldState extends State<MarkInputField> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialValue != widget.initialValue && _controller.text != widget.initialValue) {
       _controller.text = widget.initialValue;
+      _lastSavedValue = widget.initialValue;
+    }
+    if (oldWidget.focusNode != widget.focusNode) {
+      oldWidget.focusNode.removeListener(_handleFocusChange);
+      widget.focusNode.addListener(_handleFocusChange);
     }
   }
 
   @override
   void dispose() {
+    widget.focusNode.removeListener(_handleFocusChange);
     _controller.dispose();
-    _focusNode.dispose();
     super.dispose();
+  }
+
+  void _handleFocusChange() {
+    if (!widget.focusNode.hasFocus) {
+      if (_controller.text != _lastSavedValue) {
+        _lastSavedValue = _controller.text;
+        widget.onFocusLostOrSubmitted(_controller.text);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: _controller,
-      focusNode: _focusNode,
-      keyboardType: TextInputType.text,
+      focusNode: widget.focusNode,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
       textInputAction: TextInputAction.next,
       textAlign: TextAlign.center,
       decoration: const InputDecoration(hintText: "-", border: InputBorder.none),
-      onFieldSubmitted: (val) => widget.onFocusLostOrSubmitted(val),
+      onFieldSubmitted: (val) {
+        if (val != _lastSavedValue) {
+          _lastSavedValue = val;
+          widget.onFocusLostOrSubmitted(val);
+        }
+        if (widget.onNext != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            widget.onNext!();
+          });
+        }
+      },
     );
   }
 }
 
 // ==========================================
-// WIDGET: TAB 2 - SUBJECT MARKS
+// FIXED: VERTICAL FOCUS MAP IN MARKS TAB
 // ==========================================
 class SubjectMarksTabWidget extends StatefulWidget {
   final int workbookId;
@@ -1024,6 +1050,19 @@ class SubjectMarksTabWidget extends StatefulWidget {
 
 class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
   int _selectedSubjectIndex = 0;
+  final Map<String, FocusNode> _focusNodes = {};
+
+  @override
+  void dispose() {
+    for (var node in _focusNodes.values) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  FocusNode _getFocusNode(String key) {
+    return _focusNodes.putIfAbsent(key, () => FocusNode());
+  }
 
   String? _validateAndCleanInput(String input, double maxAllowed, String studentName, String componentName) {
     String clean = input.toUpperCase().trim();
@@ -1137,19 +1176,26 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
               scrollDirection: Axis.horizontal,
               child: DataTable(
                 columns: gridColumns,
-                rows: widget.students.map((student) {
+                rows: widget.students.asMap().entries.map((entry) {
+                  int sIdx = entry.key;
+                  var student = entry.value;
+
                   bool isFail = student.isSubjectAttempted(currentSub) && student.getSubjectScore(currentSub) < currentSub.passingMarks;
                   Color? cellColor = isFail ? Colors.red[100] : null;
                   List<DataCell> rowCells = [DataCell(Text(student.rollNo)), DataCell(Text(student.name))];
 
                   if (currentSub.components.isEmpty) {
                     final currentVal = student.marks[currentSub.name] ?? "";
+                    final fieldKey = '${student.rollNo}_${currentSub.name}';
+                    final node = _getFocusNode(fieldKey);
+
                     rowCells.add(DataCell(
                       Container(
                         color: cellColor,
                         child: MarkInputField(
-                          key: ValueKey('${student.rollNo}_${currentSub.name}_$currentVal'),
+                          key: ValueKey(fieldKey),
                           initialValue: currentVal,
+                          focusNode: node,
                           onFocusLostOrSubmitted: (newValue) async {
                             final verified = _validateAndCleanInput(newValue, currentSub.maxMarks, student.name, currentSub.name);
                             if (verified != null) {
@@ -1158,6 +1204,11 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                             }
                             setState(() {});
                           },
+                          onNext: sIdx < widget.students.length - 1 ? () {
+                            final nextStudent = widget.students[sIdx + 1];
+                            final nextKey = '${nextStudent.rollNo}_${currentSub.name}';
+                            _getFocusNode(nextKey).requestFocus();
+                          } : null,
                         ),
                       ),
                     ));
@@ -1165,12 +1216,16 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                     for (var c in currentSub.components) {
                       String markKey = '${currentSub.name}_${c.name}';
                       final currentVal = student.marks[markKey] ?? "";
+                      final fieldKey = '${student.rollNo}_$markKey';
+                      final node = _getFocusNode(fieldKey);
+
                       rowCells.add(DataCell(
                         Container(
                           color: cellColor,
                           child: MarkInputField(
-                            key: ValueKey('${student.rollNo}_${markKey}_$currentVal'),
+                            key: ValueKey(fieldKey),
                             initialValue: currentVal,
+                            focusNode: node,
                             onFocusLostOrSubmitted: (newValue) async {
                               final verified = _validateAndCleanInput(newValue, c.maxMarks, student.name, c.name);
                               if (verified != null) {
@@ -1179,6 +1234,11 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                               }
                               setState(() {});
                             },
+                            onNext: sIdx < widget.students.length - 1 ? () {
+                              final nextStudent = widget.students[sIdx + 1];
+                              final nextKey = '${nextStudent.rollNo}_$markKey';
+                              _getFocusNode(nextKey).requestFocus();
+                            } : null,
                           ),
                         ),
                       ));
