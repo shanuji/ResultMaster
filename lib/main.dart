@@ -148,23 +148,16 @@ class DatabaseHelper {
     ''');
   }
 
-  // --- NEW: DATABASE RESTORE FUNCTION ---
   Future<void> restoreDatabaseFile(File backupFile) async {
-    // 1. Close current database safely
     if (_database != null) {
       await _database!.close();
       _database = null;
     }
-    
-    // 2. Overwrite the internal file with the backup
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, 'result_master.db');
     await backupFile.copy(path);
-    
-    // 3. Re-initialize connection
     _database = await _initDB('result_master.db');
   }
-  // --------------------------------------
 
   Future<List<Map<String, dynamic>>> fetchAllWorkbooks() async {
     final db = await instance.database;
@@ -191,7 +184,7 @@ class DatabaseHelper {
       });
     }
 
-    List<String> defaultNames = ["Tanush Bhal", "Aarav Sharma", "Isha Patel", "Reyansh Gupta"];
+    List<String> defaultNames = ["Student 1", "Student 2", "Student 3"];
     for (int i = 0; i < defaultNames.length; i++) {
       await db.insert('students', {
         'workbook_id': workbookId,
@@ -431,7 +424,7 @@ class _CrashLogScreenState extends State<CrashLogScreen> {
 }
 
 // ==========================================
-// CORE MASTER LANDING DASHBOARD (WITH BACKUP TAB)
+// CORE MASTER LANDING DASHBOARD
 // ==========================================
 class MasterDashboardHome extends StatefulWidget {
   const MasterDashboardHome({super.key});
@@ -459,7 +452,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
     });
   }
 
-  // --- NEW: BACKUP EXPORT LOGIC ---
   Future<void> _exportBackup() async {
     try {
       final dbPath = await getDatabasesPath();
@@ -481,14 +473,12 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
     }
   }
 
-  // --- NEW: BACKUP IMPORT LOGIC ---
   Future<void> _importBackup() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(); 
       if (result != null && result.files.single.path != null) {
         File backupFile = File(result.files.single.path!);
         
-        // Safety warning before overwriting
         if (!mounted) return;
         bool? confirm = await showDialog(
           context: context,
@@ -515,7 +505,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red));
     }
   }
-  // --------------------------------
 
   void _launchSetupWizard() {
     showModalBottomSheet(
@@ -586,7 +575,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                             const SizedBox(height: 16),
                             const Text('No workbooks created yet.', style: TextStyle(fontSize: 16, color: Colors.grey)),
                             const SizedBox(height: 24),
-                            ElevatedButton.icon(onPressed: _launchSetupWizard, icon: const Icon(Icons.add), label: const Text('Create Dynamic Workbook'))
+                            ElevatedButton.icon(onPressed: _launchSetupWizard, icon: const Icon(Icons.add), label: const Text('Create New Result'))
                           ],
                         ),
                       )
@@ -600,7 +589,8 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                             child: ListTile(
                               leading: const CircleAvatar(child: Icon(Icons.assignment)),
                               title: Text(item['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text('Created: ${item['created_at'].toString().substring(0, 10)}'),
+                              // UPDATED LINE BELOW: Shows date and time formatting
+                              subtitle: Text('Created: ${item['created_at'].toString().substring(0, 16).replaceAll('T', ' at ')}'),
                               trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _deleteWorkbookConfirm(item['id'], item['title'])),
                               onTap: () => _openWorkbook(item['id'], item['title']),
                             ),
@@ -646,7 +636,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
 }
 
 // ==========================================
-// (THE REST OF THE FILE REMAINS IDENTICAL: Workspace, Marks Tab, Final Calc, Summary, etc.)
+// ACTIVE INDIVIDUAL WORKSPACE SCREEN
 // ==========================================
 class WorkbookWorkspaceScreen extends StatefulWidget {
   final int workbookId;
@@ -967,11 +957,11 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                   List<DataCell> rowCells = [DataCell(Text(student.rollNo)), DataCell(Text(student.name))];
                   if (currentSub.components.isEmpty) {
                     final fieldKey = '${student.rollNo}_${currentSub.name}';
-                    rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.marks[currentSub.name] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, currentSub.maxMarks, student.name, currentSub.name); if (verified != null) { student.marks[currentSub.name] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: currentSub.name, value: verified); } setState(() {}); }, onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}_${currentSub.name}').requestFocus() : null))));
+                    rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.marks[currentSub.name] ?? "", focusNode: getFocusNode(fieldKey), onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, currentSub.maxMarks, student.name, currentSub.name); if (verified != null) { student.marks[currentSub.name] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: currentSub.name, value: verified); } setState(() {}); }, onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}${currentSub.name}').requestFocus() : null))));
                   } else {
                     for (var c in currentSub.components) {
-                      String markKey = '${currentSub.name}_${c.name}'; final fieldKey = '${student.rollNo}_$markKey';
-                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.marks[markKey] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, c.maxMarks, student.name, c.name); if (verified != null) { student.marks[markKey] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: markKey, value: verified); } setState(() {}); }, onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}_$markKey').requestFocus() : null))));
+                      String markKey = '${currentSub.name}${c.name}'; final fieldKey = '${student.rollNo}$markKey';
+                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.marks[markKey] ?? "", focusNode: getFocusNode(fieldKey), onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, c.maxMarks, student.name, c.name); if (verified != null) { student.marks[markKey] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: markKey, value: verified); } setState(() {}); }, onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}$markKey').requestFocus() : null))));
                     }
                   }
                   return DataRow(cells: rowCells);
@@ -1073,7 +1063,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
   late TextEditingController _titleController; late List<SubjectSetup> _subjects;
   @override
   void initState() {
-    super.initState(); _titleController = TextEditingController(text: widget.initialTitle ?? "Class 3 Assessment Workspace");
+    super.initState(); _titleController = TextEditingController(text: widget.initialTitle ?? "Class Name");
     if (widget.initialSubjects != null) { _subjects = widget.initialSubjects!.map((s) => SubjectSetup(name: s.name, maxMarks: s.maxMarks, passingMarks: s.passingMarks, includeInPassFail: s.includeInPassFail, themeColor: s.themeColor, components: s.components.map((c) => SubjectComponent(name: c.name, maxMarks: c.maxMarks)).toList())).toList(); }
     else { _subjects = [SubjectSetup(name: "ENG.", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[0]), SubjectSetup(name: "HINDI", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[1])]; }
   }
@@ -1097,7 +1087,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(children: [Expanded(child: TextFormField(initialValue: sub.name, decoration: const InputDecoration(labelText: 'Subject Name', labelStyle: TextStyle(fontWeight: FontWeight.bold)), onChanged: (val) => sub.name = val)), IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => _subjects.removeAt(index)))]),
-                          Row(children: [Expanded(child: TextFormField(key: ValueKey('${sub.name}_max_${sub.components.length}'), initialValue: sub.maxMarks.toStringAsFixed(0), decoration: InputDecoration(labelText: 'Max Marks', filled: sub.components.isNotEmpty, fillColor: Colors.grey[200]), keyboardType: TextInputType.number, enabled: sub.components.isEmpty, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)), const SizedBox(width: 12), Expanded(child: TextFormField(initialValue: sub.passingMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Pass Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0))]),
+                          Row(children: [Expanded(child: TextFormField(key: ValueKey('${sub.name}max${sub.components.length}'), initialValue: sub.maxMarks.toStringAsFixed(0), decoration: InputDecoration(labelText: 'Max Marks', filled: sub.components.isNotEmpty, fillColor: Colors.grey[200]), keyboardType: TextInputType.number, enabled: sub.components.isEmpty, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)), const SizedBox(width: 12), Expanded(child: TextFormField(initialValue: sub.passingMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Pass Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0))]),
                           const SizedBox(height: 8), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Bifurcations (Theory/Prac):', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)), TextButton.icon(onPressed: () => setState(() { sub.components.add(SubjectComponent(name: 'Part ${sub.components.length + 1}', maxMarks: 50)); sub.recalculateMaxMarks(); }), icon: const Icon(Icons.add, size: 16), label: const Text('Add Component'))]),
                           if (sub.components.isNotEmpty) ...sub.components.asMap().entries.map((cEntry) { int cIdx = cEntry.key; var comp = cEntry.value; return Padding(padding: const EdgeInsets.only(left: 16.0, top: 4.0), child: Row(children: [Expanded(child: TextFormField(initialValue: comp.name, decoration: const InputDecoration(labelText: 'Comp. Name', isDense: true), onChanged: (val) => comp.name = val)), const SizedBox(width: 8), Expanded(child: TextFormField(initialValue: comp.maxMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Max Marks', isDense: true), keyboardType: TextInputType.number, onChanged: (val) { comp.maxMarks = double.tryParse(val) ?? 0.0; setState(() => sub.recalculateMaxMarks()); })), IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => setState(() { sub.components.removeAt(cIdx); sub.recalculateMaxMarks(); }))])); }).toList(),
                           SwitchListTile(title: const Text('Count towards Final Pass/Fail', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)), value: sub.includeInPassFail, activeColor: sub.themeColor, onChanged: (val) => setState(() => sub.includeInPassFail = val), dense: true, contentPadding: EdgeInsets.zero)
