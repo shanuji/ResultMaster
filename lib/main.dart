@@ -961,7 +961,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                   } else {
                     for (var c in currentSub.components) {
                       String markKey = '${currentSub.name}${c.name}'; final fieldKey = '${student.rollNo}$markKey';
-                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.marks[markKey] ?? "", focusNode: getFocusNode(fieldKey), onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, c.maxMarks, student.name, c.name); if (verified != null) { student.marks[markKey] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: markKey, value: verified); } setState(() {}); }, onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}$markKey').requestFocus() : null))));
+                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.marks[markKey] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, c.maxMarks, student.name, c.name); if (verified != null) { student.marks[markKey] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: markKey, value: verified); } setState(() {}); }, onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}$markKey').requestFocus() : null))));
                     }
                   }
                   return DataRow(cells: rowCells);
