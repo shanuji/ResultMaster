@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/result_master_theme.dart';
 import '../../../result_workbook/data/repositories/sqlite_result_workbook_repository.dart';
 import '../../../result_workbook/domain/entities/result_workbook.dart';
+import '../providers/subject_tabs_provider.dart';
 
 class ResultWorkspaceScreen extends StatefulWidget {
   const ResultWorkspaceScreen({super.key});
@@ -13,45 +14,121 @@ class ResultWorkspaceScreen extends StatefulWidget {
   static const routePath = '/results/new';
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tabs = ref.watch(draftSubjectTabsProvider);
+  State<ResultWorkspaceScreen> createState() => _ResultWorkspaceScreenState();
+}
 
-    return DefaultTabController(
-      length: tabs.length,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('New Result Workbook'),
-          bottom: TabBar(
-            isScrollable: true,
-            indicatorColor: Colors.white,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            tabs: [for (final tab in tabs) Tab(text: tab.name)],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            for (final tab in tabs)
-              tab.id == 'summary'
-                  ? const _SummarySheet()
-                  : MarksEntrySheet(subjectId: tab.id, subjectName: tab.name),
-          ],
-        ),
+class _ResultWorkspaceScreenState extends State<ResultWorkspaceScreen> {
+  final SqliteResultWorkbookRepository _repository = SqliteResultWorkbookRepository();
+  var _loading = true;
+  List<WorkbookSummary> _workbooks = const <WorkbookSummary>[];
+  OpenedWorkbook? _opened;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWorkbooks();
+  }
+
+  Future<void> _loadWorkbooks() async {
+    setState(() => _loading = true);
+    try {
+      final workbooks = await _repository.listWorkbooks();
+      if (!mounted) return;
+      setState(() => _workbooks = workbooks);
+    } catch (error) {
+      if (mounted) _message('$error');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _open(WorkbookSummary workbook) async {
+    try {
+      final opened = await _repository.openWorkbook(workbook.id);
+      if (mounted) setState(() => _opened = opened);
+    } catch (error) {
+      if (mounted) _message('$error');
+    }
+  }
+
+  Future<void> _rename(WorkbookSummary workbook) async {
+    final controller = TextEditingController(text: workbook.examinationName);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Workbook'),
+        content: TextField(controller: controller, decoration: const InputDecoration(labelText: 'Examination name')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+        ],
       ),
     );
+    controller.dispose();
+    if (name == null || name.trim().isEmpty) return;
+    await _repository.renameWorkbook(workbook.id, name);
+    await _loadWorkbooks();
+  }
+
+  Future<void> _delete(WorkbookSummary workbook) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Workbook?'),
+        content: Text('Delete ${workbook.title}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _repository.deleteWorkbook(workbook.id);
+    if (mounted && _opened?.summary.id == workbook.id) setState(() => _opened = null);
+    await _loadWorkbooks();
+  }
+
+  Future<void> _saveMark({required int studentId, required int componentId, double? marks}) async {
+    final workbookId = _opened?.summary.id;
+    if (workbookId == null) return;
+    await _repository.saveMark(workbookId: workbookId, studentId: studentId, componentId: componentId, marks: marks);
   }
 
   void _message(String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Result Workbooks'), actions: <Widget>[IconButton(onPressed: _loadWorkbooks, icon: const Icon(Icons.refresh), tooltip: 'Refresh')]),
-    body: Row(children: <Widget>[
-      SizedBox(width: 320, child: _loading ? const Center(child: CircularProgressIndicator()) : _WorkbookList(workbooks: _workbooks, selectedId: _opened?.summary.id, onOpen: _open, onRename: _rename, onDelete: _delete)),
-      const VerticalDivider(width: 1),
-      Expanded(child: _opened == null ? const Center(child: Text('Open a workbook, or create one from the New Result wizard.')) : _WorkbookGrid(workbook: _opened!, onSaveMark: _saveMark)),
-    ]),
-  );
+        appBar: AppBar(title: const Text('Result Workbooks'), actions: <Widget>[IconButton(onPressed: _loadWorkbooks, icon: const Icon(Icons.refresh), tooltip: 'Refresh')]),
+        body: Row(children: <Widget>[
+          SizedBox(width: 320, child: _loading ? const Center(child: CircularProgressIndicator()) : _WorkbookList(workbooks: _workbooks, selectedId: _opened?.summary.id, onOpen: _open, onRename: _rename, onDelete: _delete)),
+          const VerticalDivider(width: 1),
+          Expanded(child: _opened == null ? const _DraftWorkbookTabs() : _WorkbookGrid(workbook: _opened!, onSaveMark: _saveMark)),
+        ]),
+      );
+}
+
+class _DraftWorkbookTabs extends ConsumerWidget {
+  const _DraftWorkbookTabs();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tabs = ref.watch(draftSubjectTabsProvider);
+    return DefaultTabController(
+      length: tabs.length,
+      child: Column(
+        children: [
+          TabBar(isScrollable: true, tabs: [for (final tab in tabs) Tab(text: tab.name)]),
+          Expanded(
+            child: TabBarView(
+              children: [
+                for (final tab in tabs) tab.id == 'summary' ? const _SummarySheet() : MarksEntrySheet(subjectId: tab.id, subjectName: tab.name),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _WorkbookList extends StatelessWidget {
@@ -76,6 +153,76 @@ class _WorkbookList extends StatelessWidget {
       ], onSelected: (value) => value == 'rename' ? onRename(workbook) : onDelete(workbook)),
     ),
   ]);
+}
+
+class _WorkbookGrid extends StatelessWidget {
+  const _WorkbookGrid({required this.workbook, required this.onSaveMark});
+
+  final OpenedWorkbook workbook;
+  final Future<void> Function({required int studentId, required int componentId, double? marks}) onSaveMark;
+
+  @override
+  Widget build(BuildContext context) {
+    final subjects = workbook.subjects;
+    return DefaultTabController(
+      length: subjects.isEmpty ? 1 : subjects.length,
+      child: Column(
+        children: [
+          TabBar(
+            isScrollable: true,
+            tabs: subjects.isEmpty ? const [Tab(text: 'Workbook')] : [for (final subject in subjects) Tab(text: subject.name)],
+          ),
+          Expanded(
+            child: subjects.isEmpty
+                ? const Center(child: Text('This workbook has no subjects.'))
+                : TabBarView(
+                    children: [for (final subject in subjects) _SubjectMarksGrid(workbook: workbook, subject: subject, onSaveMark: onSaveMark)],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubjectMarksGrid extends StatelessWidget {
+  const _SubjectMarksGrid({required this.workbook, required this.subject, required this.onSaveMark});
+
+  final OpenedWorkbook workbook;
+  final WorkbookSubject subject;
+  final Future<void> Function({required int studentId, required int componentId, double? marks}) onSaveMark;
+
+  @override
+  Widget build(BuildContext context) {
+    final editableComponents = subject.components.where((component) => component.isEditable).toList(growable: false);
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _SheetRow(cells: ['Roll No.', 'Student Name', ...editableComponents.map((component) => component.name), 'Total'], isHeader: true),
+        for (final student in workbook.students)
+          SizedBox(
+            height: 52,
+            child: Row(
+              children: [
+                _ReadOnlyCell(student.rollNumber.toString()),
+                _ReadOnlyCell(student.name, flex: 2),
+                for (final component in editableComponents)
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: workbook.markFor(student.id!, component.id)?.toString() ?? '',
+                      textAlign: TextAlign.center,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                      onFieldSubmitted: (value) => onSaveMark(studentId: student.id!, componentId: component.id, marks: double.tryParse(value.trim())),
+                    ),
+                  ),
+                _ReadOnlyCell(workbook.subjectTotal(student.id!, subject).toString()),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 @visibleForTesting
