@@ -804,8 +804,11 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
   }
 
   void _exportAsExcel() async {
-    var excel = ex.Excel.createExcel(); ex.Sheet sheet = excel['Sheet1'];
-    sheet.appendRow([ex.TextCellValue("Roll No"), ex.TextCellValue("Name"), ..._subjects.map((s) => ex.TextCellValue(s.name)), ex.TextCellValue("Total"), ex.TextCellValue("Percentage"), ex.TextCellValue("Result")]);
+    var excel = ex.Excel.createExcel(); 
+    
+    // 1. FINAL RESULT SHEET
+    ex.Sheet finalSheet = excel['Final Result'];
+    finalSheet.appendRow([ex.TextCellValue("Roll No"), ex.TextCellValue("Name"), ..._subjects.map((s) => ex.TextCellValue(s.name)), ex.TextCellValue("Total"), ex.TextCellValue("Percentage"), ex.TextCellValue("Result")]);
     for (var s in _students) {
       double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<ex.CellValue> subValues = [];
       for (var sub in _subjects) {
@@ -819,19 +822,58 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
         }
       }
       double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-      sheet.appendRow([ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name.isEmpty ? '-' : s.name), ...subValues, ex.DoubleCellValue(totalObtained), ex.TextCellValue('${pct.toStringAsFixed(2)}%'), ex.TextCellValue(failed ? "FAIL" : "PASS")]);
+      finalSheet.appendRow([ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name.isEmpty ? '-' : s.name), ...subValues, ex.DoubleCellValue(totalObtained), ex.TextCellValue('${pct.toStringAsFixed(2)}%'), ex.TextCellValue(failed ? "FAIL" : "PASS")]);
     }
+
+    // 2. INDIVIDUAL SUBJECT SHEETS
+    for (var sub in _subjects) {
+      String sheetName = sub.name.isEmpty ? 'Subject' : sub.name;
+      ex.Sheet subSheet = excel[sheetName];
+      
+      List<ex.CellValue> subHeaders = [ex.TextCellValue("Roll No"), ex.TextCellValue("Name")];
+      if (sub.components.isEmpty) { subHeaders.add(ex.TextCellValue("Marks")); } 
+      else { subHeaders.addAll(sub.components.map((c) => ex.TextCellValue(c.name))); }
+      subSheet.appendRow(subHeaders);
+
+      for (var s in _students) {
+        List<ex.CellValue> row = [ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name.isEmpty ? '-' : s.name)];
+        if (sub.components.isEmpty) {
+          row.add(ex.TextCellValue(s.marks[sub.name] ?? "-"));
+        } else {
+          for (var c in sub.components) {
+            row.add(ex.TextCellValue(s.marks['${sub.name}_${c.name}'] ?? "-"));
+          }
+        }
+        subSheet.appendRow(row);
+      }
+    }
+
+    if (excel.tables.containsKey('Sheet1')) { excel.delete('Sheet1'); }
+
+    // --- DYNAMIC FILE NAMING LOGIC ---
+    String fileName = _currentTitle.trim();
+    if (!fileName.toLowerCase().endsWith('result')) {
+      fileName += ' Result';
+    }
+
     var bytes = excel.encode();
-    if (bytes != null) await Share.shareXFiles([XFile.fromData(Uint8List.fromList(bytes), mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', name: '$_currentTitle.xlsx')], text: 'Excel Report Card Grid');
+    if (bytes != null) {
+      await Share.shareXFiles(
+        [XFile.fromData(Uint8List.fromList(bytes), mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', name: '$fileName.xlsx')], 
+        text: 'Excel Report Card Grid'
+      );
+    }
   }
 
   void _exportAsPDF() async {
     final pdfDoc = pw.Document();
+
+    // 1. FINAL RESULT PAGE
     pdfDoc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4.landscape,
         build: (pw.Context context) => [
-          pw.Header(level: 0, child: pw.Text(_currentTitle, style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold))),
+          pw.Header(level: 0, child: pw.Text('$_currentTitle - Final Result', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold))),
           pw.SizedBox(height: 12),
           pw.TableHelper.fromTextArray(
             headers: ['Roll No', 'Name', ..._subjects.map((s) => s.name), 'Total', '%', 'Result'],
@@ -856,8 +898,52 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
         ]
       )
     );
+
+    // 2. INDIVIDUAL SUBJECT PAGES
+    for (var sub in _subjects) {
+      pdfDoc.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.portrait,
+          build: (pw.Context context) {
+            List<String> subHeaders = ['Roll No', 'Name'];
+            if (sub.components.isEmpty) { subHeaders.add("Marks"); } 
+            else { subHeaders.addAll(sub.components.map((c) => c.name)); }
+
+            List<List<String>> data = _students.map((s) {
+              List<String> row = [s.rollNo, s.name.isEmpty ? '-' : s.name];
+              if (sub.components.isEmpty) {
+                row.add(s.marks[sub.name] ?? "-");
+              } else {
+                row.addAll(sub.components.map((c) => s.marks['${sub.name}_${c.name}'] ?? "-"));
+              }
+              return row;
+            }).toList();
+
+            return [
+              pw.Header(level: 0, child: pw.Text('$_currentTitle - ${sub.name}', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold))),
+              pw.SizedBox(height: 12),
+              pw.TableHelper.fromTextArray(
+                headers: subHeaders,
+                data: data,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold), cellAlignment: pw.Alignment.center,
+              )
+            ];
+          }
+        )
+      );
+    }
+
+    // --- DYNAMIC FILE NAMING LOGIC ---
+    String fileName = _currentTitle.trim();
+    if (!fileName.toLowerCase().endsWith('result')) {
+      fileName += ' Result';
+    }
+
     final bytes = await pdfDoc.save();
-    await Share.shareXFiles([XFile.fromData(bytes, mimeType: 'application/pdf', name: '$_currentTitle.pdf')], text: 'PDF Grade Sheet Report');
+    await Share.shareXFiles(
+      [XFile.fromData(bytes, mimeType: 'application/pdf', name: '$fileName.pdf')], 
+      text: 'PDF Grade Sheet Report'
+    );
   }
 
   void _showExportOptions() {
@@ -927,12 +1013,16 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                             scrollDirection: Axis.horizontal,
                             child: DataTable(
                               columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Actions'))],
-                              rows: filteredStudents.map((student) {
-                                return DataRow(cells: [
-                                  DataCell(AutoSelectTextField(initialValue: student.rollNo, decoration: const InputDecoration(border: InputBorder.none, hintText: 'Roll No'), onChanged: (val) { String oldRoll = student.rollNo; student.rollNo = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, oldRoll, val, student.name); })),
-                                  DataCell(AutoSelectTextField(initialValue: student.name, decoration: InputDecoration(border: InputBorder.none, hintText: 'Student ${student.rollNo}'), onChanged: (val) { student.name = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, student.rollNo, student.rollNo, val); })),
-                                  DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, student.rollNo); setState(() { _students.remove(student); }); })),
-                                ]);
+                              rows: filteredStudents.asMap().entries.map((entry) {
+                                int index = entry.key; var student = entry.value;
+                                return DataRow(
+                                  color: MaterialStateProperty.all(index.isEven ? Colors.grey[100] : Colors.white),
+                                  cells: [
+                                    DataCell(SizedBox(width: 50, child: AutoSelectTextField(initialValue: student.rollNo, decoration: const InputDecoration(border: InputBorder.none, hintText: 'Roll'), onChanged: (val) { String oldRoll = student.rollNo; student.rollNo = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, oldRoll, val, student.name); })))),
+                                    DataCell(AutoSelectTextField(initialValue: student.name, decoration: InputDecoration(border: InputBorder.none, hintText: 'Student ${student.rollNo}'), onChanged: (val) { student.name = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, student.rollNo, student.rollNo, val); })),
+                                    DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, student.rollNo); setState(() { _students.remove(student); }); })),
+                                  ]
+                                );
                               }).toList(),
                             ),
                           ),
@@ -1055,12 +1145,12 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                 rows: widget.students.asMap().entries.map((entry) {
                   int sIdx = entry.key; var student = entry.value;
                   String displayName = student.name.isEmpty ? 'Student ${student.rollNo}' : student.name;
-                  List<DataCell> rowCells = [DataCell(Text(student.rollNo)), DataCell(Text(displayName))];
+                  List<DataCell> rowCells = [DataCell(SizedBox(width: 50, child: Text(student.rollNo))), DataCell(Text(displayName))];
                   
                   if (currentSub.components.isEmpty) {
                     final fieldKey = '${student.rollNo}_${currentSub.name}';
                     bool isFail = currentSub.includeInPassFail && student.isSubjectAttempted(currentSub) && !student.isSubjectPassed(currentSub);
-                    Color? cellColor = isFail ? Colors.red[100] : null;
+                    Color? cellColor = isFail ? Colors.red[100] : (sIdx.isEven ? Colors.grey[100] : Colors.white);
                     
                     rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(
                       key: ValueKey(fieldKey), initialValue: student.marks[currentSub.name] ?? "", focusNode: _getFocusNode(fieldKey), 
@@ -1079,7 +1169,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                           isFail = student.isSubjectAttempted(currentSub) && !student.isSubjectPassed(currentSub);
                         }
                       }
-                      Color? cellColor = isFail ? Colors.red[100] : null;
+                      Color? cellColor = isFail ? Colors.red[100] : (sIdx.isEven ? Colors.grey[100] : Colors.white);
                       
                       rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(
                         key: ValueKey(fieldKey), initialValue: student.marks[markKey] ?? "", focusNode: _getFocusNode(fieldKey), 
@@ -1088,7 +1178,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                       ))));
                     }
                   }
-                  return DataRow(cells: rowCells);
+                  return DataRow(color: MaterialStateProperty.all(sIdx.isEven ? Colors.grey[100] : Colors.white), cells: rowCells);
                 }).toList(),
               ),
             ),
@@ -1109,6 +1199,8 @@ class FinalSheetTabWidget extends StatefulWidget {
 
 class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
   int? _sortColumnIndex; bool _isAscending = true; late List<StudentRow> _sortedStudents;
+  bool _freezeColumns = true; 
+  
   @override
   void initState() { super.initState(); _sortedStudents = List.from(widget.students); }
   @override
@@ -1119,30 +1211,84 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.vertical, child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            headingRowColor: MaterialStateProperty.all(Colors.blue[50]), sortColumnIndex: _sortColumnIndex, sortAscending: _isAscending,
-            columns: [DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('Name'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), ...widget.subjects.map((sub) => DataColumn(label: Text(sub.name.isEmpty ? 'Unamed' : sub.name))), DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), const DataColumn(label: Text('Result'))],
-            rows: _sortedStudents.map((student) {
-              double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<DataCell> subjectCells = [];
-              for (var sub in widget.subjects) {
-                totalMax += sub.maxMarks; String displayMark = "-";
-                if (student.isSubjectAttempted(sub)) {
-                  double score = student.getSubjectScore(sub); totalObtained += score;
-                  if (sub.includeInPassFail && !student.isSubjectPassed(sub)) failed = true;
-                  if (sub.components.isEmpty && (student.marks[sub.name] == "A" || student.marks[sub.name] == "AB")) displayMark = student.marks[sub.name]!; else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
-                }
-                subjectCells.add(DataCell(Text(displayMark)));
-              }
-              double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-              return DataRow(cells: [DataCell(Text(student.rollNo)), DataCell(Text(student.name.isEmpty ? '-' : student.name)), ...subjectCells, DataCell(Text(totalObtained.toStringAsFixed(1))), DataCell(Text('${pct.toStringAsFixed(2)}%')), DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold)))]);
-            }).toList(),
+    return Column(
+      children: [
+        Container(
+          color: Colors.blue[50], padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text("Freeze Roll No & Name:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Switch(value: _freezeColumns, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeColumns = val)),
+            ],
           ),
         ),
-      ),
+        Expanded(
+          child: _freezeColumns ? 
+            // FROZEN VIEW (Split table, synced vertical scrolling)
+            SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DataTable(
+                    headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48,
+                    columns: [DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('Name'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); }))],
+                    rows: _sortedStudents.asMap().entries.map((entry) => DataRow(color: MaterialStateProperty.all(entry.key.isEven ? Colors.grey[100] : Colors.white), cells: [DataCell(SizedBox(width: 50, child: Text(entry.value.rollNo))), DataCell(Text(entry.value.name.isEmpty ? '-' : entry.value.name))])).toList(),
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: (_sortColumnIndex != null && _sortColumnIndex! >= 2) ? _sortColumnIndex! - 2 : null, sortAscending: _isAscending,
+                        columns: [...widget.subjects.map((sub) => DataColumn(label: Text(sub.name.isEmpty ? 'Unamed' : sub.name))), DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx + 2; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx + 2; _isAscending = asc; _applySort(); })), const DataColumn(label: Text('Result'))],
+                        rows: _sortedStudents.asMap().entries.map((entry) {
+                          var student = entry.value; double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<DataCell> subjectCells = [];
+                          for (var sub in widget.subjects) {
+                            totalMax += sub.maxMarks; String displayMark = "-";
+                            if (student.isSubjectAttempted(sub)) {
+                              double score = student.getSubjectScore(sub); totalObtained += score;
+                              if (sub.includeInPassFail && !student.isSubjectPassed(sub)) failed = true;
+                              if (sub.components.isEmpty && (student.marks[sub.name] == "A" || student.marks[sub.name] == "AB")) displayMark = student.marks[sub.name]!; else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
+                            }
+                            subjectCells.add(DataCell(Text(displayMark)));
+                          }
+                          double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
+                          return DataRow(color: MaterialStateProperty.all(entry.key.isEven ? Colors.grey[100] : Colors.white), cells: [...subjectCells, DataCell(Text(totalObtained.toStringAsFixed(1))), DataCell(Text('${pct.toStringAsFixed(2)}%')), DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold)))]);
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+            : 
+            // STANDARD UN-FROZEN VIEW 
+            SingleChildScrollView(
+              scrollDirection: Axis.vertical, child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowColor: MaterialStateProperty.all(Colors.blue[100]), sortColumnIndex: _sortColumnIndex, sortAscending: _isAscending,
+                  columns: [DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('Name'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), ...widget.subjects.map((sub) => DataColumn(label: Text(sub.name.isEmpty ? 'Unamed' : sub.name))), DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), const DataColumn(label: Text('Result'))],
+                  rows: _sortedStudents.asMap().entries.map((entry) {
+                    var student = entry.value; double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<DataCell> subjectCells = [];
+                    for (var sub in widget.subjects) {
+                      totalMax += sub.maxMarks; String displayMark = "-";
+                      if (student.isSubjectAttempted(sub)) {
+                        double score = student.getSubjectScore(sub); totalObtained += score;
+                        if (sub.includeInPassFail && !student.isSubjectPassed(sub)) failed = true;
+                        if (sub.components.isEmpty && (student.marks[sub.name] == "A" || student.marks[sub.name] == "AB")) displayMark = student.marks[sub.name]!; else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
+                      }
+                      subjectCells.add(DataCell(Text(displayMark)));
+                    }
+                    double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
+                    return DataRow(color: MaterialStateProperty.all(entry.key.isEven ? Colors.grey[100] : Colors.white), cells: [DataCell(SizedBox(width: 50, child: Text(student.rollNo))), DataCell(Text(student.name.isEmpty ? '-' : student.name)), ...subjectCells, DataCell(Text(totalObtained.toStringAsFixed(1))), DataCell(Text('${pct.toStringAsFixed(2)}%')), DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold)))]);
+                  }).toList(),
+                ),
+              ),
+            ),
+        ),
+      ],
     );
   }
 }
@@ -1154,7 +1300,8 @@ class SummarySheetTabWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     int grandAppeared = 0; int grandPassed = 0; int grandDistinction = 0;
     Map<String, int> grandBrackets = {'0-20': 0, '21-32.9': 0, '33-40': 0, '41-50': 0, '51-59.9': 0, '60': 0, '61-70': 0, '71-74.9': 0, '75-80': 0, '81-90': 0, '90': 0, '91-94.9': 0, '95-100': 0};
-    final subjectRows = subjects.map((sub) {
+    final subjectRows = subjects.asMap().entries.map((entry) {
+      int index = entry.key; var sub = entry.value;
       int appeared = 0; int passed = 0; int distinction = 0; double sumMarks = 0.0; Map<String, int> distribution = {'0-20': 0, '21-32.9': 0, '33-40': 0, '41-50': 0, '51-59.9': 0, '60': 0, '61-70': 0, '71-74.9': 0, '75-80': 0, '81-90': 0, '90': 0, '91-94.9': 0, '95-100': 0};
       for (var row in students) {
         if (!row.isSubjectAttempted(sub)) continue;
@@ -1164,7 +1311,7 @@ class SummarySheetTabWidget extends StatelessWidget {
       }
       double passPct = appeared > 0 ? (passed / appeared) * 100 : 0.0; double qi = appeared > 0 ? (sumMarks / appeared) : 0.0;
       grandAppeared += appeared; grandPassed += passed; grandDistinction += distinction; distribution.forEach((key, val) => grandBrackets[key] = grandBrackets[key]! + val);
-      return DataRow(cells: [DataCell(Text(sub.name.isEmpty ? 'Unnamed' : sub.name, style: const TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(appeared.toString())), DataCell(Text(passed.toString())), DataCell(Text('${passPct.toStringAsFixed(2)}%')), DataCell(Text(distinction.toString())), DataCell(Text(qi.toStringAsFixed(2))), DataCell(Text(distribution['0-20'].toString())), DataCell(Text(distribution['21-32.9'].toString())), DataCell(Text(distribution['33-40'].toString())), DataCell(Text(distribution['41-50'].toString())), DataCell(Text(distribution['51-59.9'].toString())), DataCell(Text(distribution['60'].toString())), DataCell(Text(distribution['61-70'].toString())), DataCell(Text(distribution['71-74.9'].toString())), DataCell(Text(distribution['75-80'].toString())), DataCell(Text(distribution['81-90'].toString())), DataCell(Text(distribution['90'].toString())), DataCell(Text(distribution['91-94.9'].toString())), DataCell(Text(distribution['95-100'].toString()))]);
+      return DataRow(color: MaterialStateProperty.all(index.isEven ? Colors.grey[100] : Colors.white), cells: [DataCell(Text(sub.name.isEmpty ? 'Unnamed' : sub.name, style: const TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(appeared.toString())), DataCell(Text(passed.toString())), DataCell(Text('${passPct.toStringAsFixed(2)}%')), DataCell(Text(distinction.toString())), DataCell(Text(qi.toStringAsFixed(2))), DataCell(Text(distribution['0-20'].toString())), DataCell(Text(distribution['21-32.9'].toString())), DataCell(Text(distribution['33-40'].toString())), DataCell(Text(distribution['41-50'].toString())), DataCell(Text(distribution['51-59.9'].toString())), DataCell(Text(distribution['60'].toString())), DataCell(Text(distribution['61-70'].toString())), DataCell(Text(distribution['71-74.9'].toString())), DataCell(Text(distribution['75-80'].toString())), DataCell(Text(distribution['81-90'].toString())), DataCell(Text(distribution['90'].toString())), DataCell(Text(distribution['91-94.9'].toString())), DataCell(Text(distribution['95-100'].toString()))]);
     }).toList();
     final sumRow = DataRow(color: MaterialStateProperty.all(Colors.orange[100]), cells: [const DataCell(Text('SUM', style: TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(grandAppeared.toString(), style: const TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(grandPassed.toString(), style: const TextStyle(fontWeight: FontWeight.bold))), const DataCell(Text('-')), DataCell(Text(grandDistinction.toString(), style: const TextStyle(fontWeight: FontWeight.bold))), const DataCell(Text('-')), DataCell(Text(grandBrackets['0-20'].toString())), DataCell(Text(grandBrackets['21-32.9'].toString())), DataCell(Text(grandBrackets['33-40'].toString())), DataCell(Text(grandBrackets['41-50'].toString())), DataCell(Text(grandBrackets['51-59.9'].toString())), DataCell(Text(grandBrackets['60'].toString())), DataCell(Text(grandBrackets['61-70'].toString())), DataCell(Text(grandBrackets['71-74.9'].toString())), DataCell(Text(grandBrackets['75-80'].toString())), DataCell(Text(grandBrackets['81-90'].toString())), DataCell(Text(grandBrackets['90'].toString())), DataCell(Text(grandBrackets['91-94.9'].toString())), DataCell(Text(grandBrackets['95-100'].toString()))]);
     return Expanded(
