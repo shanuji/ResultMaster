@@ -803,6 +803,7 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
     }
   }
 
+  // UPDATED: Export logic specifically to fix the file renaming on Android 
   void _exportAsExcel() async {
     var excel = ex.Excel.createExcel(); 
     
@@ -850,21 +851,19 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
 
     if (excel.tables.containsKey('Sheet1')) { excel.delete('Sheet1'); }
 
-    // --- DYNAMIC FILE NAMING LOGIC ---
     String fileName = _currentTitle.trim();
-    if (!fileName.toLowerCase().endsWith('result')) {
-      fileName += ' Result';
-    }
+    if (!fileName.toLowerCase().endsWith('result')) fileName += ' Result';
 
     var bytes = excel.encode();
     if (bytes != null) {
-      await Share.shareXFiles(
-        [XFile.fromData(Uint8List.fromList(bytes), mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', name: '$fileName.xlsx')], 
-        text: 'Excel Report Card Grid'
-      );
+      // FIX: Write file directly to app temp directory to force Android share to use the name
+      File tempFile = File('${Directory.systemTemp.path}/$fileName.xlsx');
+      await tempFile.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(tempFile.path)], text: 'Excel Report Card Grid');
     }
   }
 
+  // UPDATED: Export logic specifically to fix the file renaming on Android
   void _exportAsPDF() async {
     final pdfDoc = pw.Document();
 
@@ -933,17 +932,15 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
       );
     }
 
-    // --- DYNAMIC FILE NAMING LOGIC ---
     String fileName = _currentTitle.trim();
-    if (!fileName.toLowerCase().endsWith('result')) {
-      fileName += ' Result';
-    }
+    if (!fileName.toLowerCase().endsWith('result')) fileName += ' Result';
 
     final bytes = await pdfDoc.save();
-    await Share.shareXFiles(
-      [XFile.fromData(bytes, mimeType: 'application/pdf', name: '$fileName.pdf')], 
-      text: 'PDF Grade Sheet Report'
-    );
+    
+    // FIX: Write file directly to app temp directory to force Android share to use the name
+    File tempFile = File('${Directory.systemTemp.path}/$fileName.pdf');
+    await tempFile.writeAsBytes(bytes);
+    await Share.shareXFiles([XFile(tempFile.path)], text: 'PDF Grade Sheet Report');
   }
 
   void _showExportOptions() {
@@ -1018,7 +1015,6 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                                 return DataRow(
                                   color: MaterialStateProperty.all(index.isEven ? Colors.grey[100] : Colors.white),
                                   cells: [
-                                    // THIS LINE WAS FIXED (removed one extra closing parenthesis `)`)
                                     DataCell(SizedBox(width: 50, child: AutoSelectTextField(initialValue: student.rollNo, decoration: const InputDecoration(border: InputBorder.none, hintText: 'Roll'), onChanged: (val) { String oldRoll = student.rollNo; student.rollNo = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, oldRoll, val, student.name); }))),
                                     DataCell(AutoSelectTextField(initialValue: student.name, decoration: InputDecoration(border: InputBorder.none, hintText: 'Student ${student.rollNo}'), onChanged: (val) { student.name = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, student.rollNo, student.rollNo, val); })),
                                     DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, student.rollNo); setState(() { _students.remove(student); }); })),
@@ -1191,6 +1187,8 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
   Widget _buildStatRow(String label, String value, {bool isWhite = false}) => Row(mainAxisSize: MainAxisSize.min, children: [Container(width: 80, padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8), color: isWhite ? Colors.white : Colors.grey[200], child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold))), Container(width: 60, padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8), decoration: BoxDecoration(border: Border(left: BorderSide(color: Colors.grey[400]!))), child: Text(value, textAlign: TextAlign.center))]);
 }
 
+
+// UPDATED ENTIRE WIDGET FOR INDEPENDENT COLUMN FREEZING
 class FinalSheetTabWidget extends StatefulWidget {
   final List<SubjectSetup> subjects; final List<StudentRow> students;
   const FinalSheetTabWidget({super.key, required this.subjects, required this.students});
@@ -1199,34 +1197,153 @@ class FinalSheetTabWidget extends StatefulWidget {
 }
 
 class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
-  int? _sortColumnIndex; bool _isAscending = true; late List<StudentRow> _sortedStudents;
-  bool _freezeColumns = true; 
+  String _sortField = 'rollNo'; 
+  bool _isAscending = true; 
+  late List<StudentRow> _sortedStudents;
+  
+  // Independent freeze toggles
+  bool _freezeRollNo = true; 
+  bool _freezeName = true; 
   
   @override
-  void initState() { super.initState(); _sortedStudents = List.from(widget.students); }
+  void initState() { super.initState(); _sortedStudents = List.from(widget.students); _applySort(); }
   @override
   void didUpdateWidget(covariant FinalSheetTabWidget oldWidget) { super.didUpdateWidget(oldWidget); _sortedStudents = List.from(widget.students); _applySort(); }
+  
   double _getTotal(StudentRow student) { double total = 0.0; for (var sub in widget.subjects) { if (student.isSubjectAttempted(sub)) total += student.getSubjectScore(sub); } return total; }
   double _getPct(StudentRow student) { double totalObtained = _getTotal(student); double totalMax = widget.subjects.fold(0.0, (sum, sub) => sum + sub.maxMarks); return totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0; }
-  void _applySort() { if (_sortColumnIndex == null) return; _sortedStudents.sort((a, b) { int mod = _isAscending ? 1 : -1; if (_sortColumnIndex == 0) return ((double.tryParse(a.rollNo) ?? 0).compareTo(double.tryParse(b.rollNo) ?? 0)) * mod; else if (_sortColumnIndex == 1) return a.name.toLowerCase().compareTo(b.name.toLowerCase()) * mod; else if (_sortColumnIndex == widget.subjects.length + 2) return _getTotal(a).compareTo(_getTotal(b)) * mod; else if (_sortColumnIndex == widget.subjects.length + 3) return _getPct(a).compareTo(_getPct(b)) * mod; return 0; }); }
+  
+  void _applySort() { 
+    if (_sortField.isEmpty) return;
+    _sortedStudents.sort((a, b) { 
+      int mod = _isAscending ? 1 : -1; 
+      if (_sortField == 'rollNo') return ((double.tryParse(a.rollNo) ?? 0).compareTo(double.tryParse(b.rollNo) ?? 0)) * mod; 
+      else if (_sortField == 'name') return a.name.toLowerCase().compareTo(b.name.toLowerCase()) * mod; 
+      else if (_sortField == 'total') return _getTotal(a).compareTo(_getTotal(b)) * mod; 
+      else if (_sortField == 'pct') return _getPct(a).compareTo(_getPct(b)) * mod; 
+      return 0; 
+    }); 
+  }
+
+  void _setSort(String field, bool asc) {
+    setState(() { _sortField = field; _isAscending = asc; _applySort(); });
+  }
 
   @override
   Widget build(BuildContext context) {
+    
+    // 1. Prepare Columns dynamically based on Freeze Toggles
+    List<DataColumn> fixedCols = [];
+    List<DataColumn> scrollCols = [];
+
+    var colRoll = DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => _setSort('rollNo', asc));
+    var colName = DataColumn(label: const Text('Name'), onSort: (idx, asc) => _setSort('name', asc));
+
+    if (_freezeRollNo) fixedCols.add(colRoll); else scrollCols.add(colRoll);
+    if (_freezeName) fixedCols.add(colName); else scrollCols.add(colName);
+
+    for (var sub in widget.subjects) {
+      scrollCols.add(DataColumn(label: Text(sub.name.isEmpty ? 'Unnamed' : sub.name)));
+    }
+    
+    var colTotal = DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => _setSort('total', asc));
+    var colPct = DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => _setSort('pct', asc));
+    
+    scrollCols.add(colTotal);
+    scrollCols.add(colPct);
+    scrollCols.add(const DataColumn(label: Text('Result')));
+
+    // 2. Prepare Rows
+    List<DataRow> fixedRows = [];
+    List<DataRow> scrollRows = [];
+
+    for (int i = 0; i < _sortedStudents.length; i++) {
+      var student = _sortedStudents[i];
+      double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; 
+      
+      List<DataCell> subjectCells = [];
+      for (var sub in widget.subjects) {
+        totalMax += sub.maxMarks; String displayMark = "-";
+        if (student.isSubjectAttempted(sub)) {
+          double score = student.getSubjectScore(sub); totalObtained += score;
+          if (sub.includeInPassFail && !student.isSubjectPassed(sub)) failed = true;
+          if (sub.components.isEmpty && (student.marks[sub.name] == "A" || student.marks[sub.name] == "AB")) {
+            displayMark = student.marks[sub.name]!; 
+          } else { 
+            displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); 
+          }
+        }
+        subjectCells.add(DataCell(Text(displayMark)));
+      }
+      
+      double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
+
+      var cellRoll = DataCell(SizedBox(width: 50, child: Text(student.rollNo)));
+      var cellName = DataCell(Text(student.name.isEmpty ? '-' : student.name));
+
+      List<DataCell> fCells = [];
+      List<DataCell> sCells = [];
+
+      if (_freezeRollNo) fCells.add(cellRoll); else sCells.add(cellRoll);
+      if (_freezeName) fCells.add(cellName); else sCells.add(cellName);
+
+      sCells.addAll(subjectCells);
+      sCells.add(DataCell(Text(totalObtained.toStringAsFixed(1))));
+      sCells.add(DataCell(Text('${pct.toStringAsFixed(2)}%')));
+      sCells.add(DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold))));
+
+      Color rowColor = i.isEven ? Colors.grey[100]! : Colors.white;
+      if (fixedCols.isNotEmpty) fixedRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: fCells));
+      scrollRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: sCells));
+    }
+
+    // 3. Determine Sort Column Indices for the UI arrows
+    int? fixedSortIndex;
+    if (_sortField == 'rollNo' && _freezeRollNo) fixedSortIndex = fixedCols.indexOf(colRoll);
+    if (_sortField == 'name' && _freezeName) fixedSortIndex = fixedCols.indexOf(colName);
+    
+    int? scrollSortIndex;
+    if (_sortField == 'rollNo' && !_freezeRollNo) scrollSortIndex = scrollCols.indexOf(colRoll);
+    if (_sortField == 'name' && !_freezeName) scrollSortIndex = scrollCols.indexOf(colName);
+    if (_sortField == 'total') scrollSortIndex = scrollCols.indexOf(colTotal);
+    if (_sortField == 'pct') scrollSortIndex = scrollCols.indexOf(colPct);
+
     return Column(
       children: [
+        // The newly separated toggles panel
         Container(
           color: Colors.blue[50], padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              const Text("Freeze Roll No & Name:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              Switch(value: _freezeColumns, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeColumns = val)),
+              const Icon(Icons.push_pin, size: 16, color: Colors.blue),
+              const SizedBox(width: 6),
+              const Text("Freeze Columns:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
+              const Spacer(),
+              const Text("Roll No", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Switch(value: _freezeRollNo, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeRollNo = val)),
+              const SizedBox(width: 16),
+              const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              Switch(value: _freezeName, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeName = val)),
             ],
           ),
         ),
         Expanded(
-          child: _freezeColumns ? 
-            // FROZEN VIEW (Split table, synced vertical scrolling)
+          child: fixedCols.isEmpty ? 
+            // STANDARD UN-FROZEN VIEW (Single Scrollable Table)
+            SingleChildScrollView(
+              scrollDirection: Axis.vertical, 
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowColor: MaterialStateProperty.all(Colors.blue[100]), 
+                  sortColumnIndex: scrollSortIndex, sortAscending: _isAscending,
+                  columns: scrollCols,
+                  rows: scrollRows,
+                ),
+              ),
+            )
+            : 
+            // SPLIT FROZEN VIEW
             SingleChildScrollView(
               scrollDirection: Axis.vertical,
               child: Row(
@@ -1234,58 +1351,22 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
                 children: [
                   DataTable(
                     headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48,
-                    columns: [DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('Name'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); }))],
-                    rows: _sortedStudents.asMap().entries.map((entry) => DataRow(color: MaterialStateProperty.all(entry.key.isEven ? Colors.grey[100] : Colors.white), cells: [DataCell(SizedBox(width: 50, child: Text(entry.value.rollNo))), DataCell(Text(entry.value.name.isEmpty ? '-' : entry.value.name))])).toList(),
+                    sortColumnIndex: fixedSortIndex, sortAscending: _isAscending,
+                    columns: fixedCols,
+                    rows: fixedRows,
                   ),
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: DataTable(
-                        headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: (_sortColumnIndex != null && _sortColumnIndex! >= 2) ? _sortColumnIndex! - 2 : null, sortAscending: _isAscending,
-                        columns: [...widget.subjects.map((sub) => DataColumn(label: Text(sub.name.isEmpty ? 'Unamed' : sub.name))), DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx + 2; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx + 2; _isAscending = asc; _applySort(); })), const DataColumn(label: Text('Result'))],
-                        rows: _sortedStudents.asMap().entries.map((entry) {
-                          var student = entry.value; double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<DataCell> subjectCells = [];
-                          for (var sub in widget.subjects) {
-                            totalMax += sub.maxMarks; String displayMark = "-";
-                            if (student.isSubjectAttempted(sub)) {
-                              double score = student.getSubjectScore(sub); totalObtained += score;
-                              if (sub.includeInPassFail && !student.isSubjectPassed(sub)) failed = true;
-                              if (sub.components.isEmpty && (student.marks[sub.name] == "A" || student.marks[sub.name] == "AB")) displayMark = student.marks[sub.name]!; else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
-                            }
-                            subjectCells.add(DataCell(Text(displayMark)));
-                          }
-                          double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-                          return DataRow(color: MaterialStateProperty.all(entry.key.isEven ? Colors.grey[100] : Colors.white), cells: [...subjectCells, DataCell(Text(totalObtained.toStringAsFixed(1))), DataCell(Text('${pct.toStringAsFixed(2)}%')), DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold)))]);
-                        }).toList(),
+                        headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, 
+                        sortColumnIndex: scrollSortIndex, sortAscending: _isAscending,
+                        columns: scrollCols,
+                        rows: scrollRows,
                       ),
                     ),
                   ),
                 ],
-              ),
-            )
-            : 
-            // STANDARD UN-FROZEN VIEW 
-            SingleChildScrollView(
-              scrollDirection: Axis.vertical, child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  headingRowColor: MaterialStateProperty.all(Colors.blue[100]), sortColumnIndex: _sortColumnIndex, sortAscending: _isAscending,
-                  columns: [DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('Name'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), ...widget.subjects.map((sub) => DataColumn(label: Text(sub.name.isEmpty ? 'Unamed' : sub.name))), DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), const DataColumn(label: Text('Result'))],
-                  rows: _sortedStudents.asMap().entries.map((entry) {
-                    var student = entry.value; double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<DataCell> subjectCells = [];
-                    for (var sub in widget.subjects) {
-                      totalMax += sub.maxMarks; String displayMark = "-";
-                      if (student.isSubjectAttempted(sub)) {
-                        double score = student.getSubjectScore(sub); totalObtained += score;
-                        if (sub.includeInPassFail && !student.isSubjectPassed(sub)) failed = true;
-                        if (sub.components.isEmpty && (student.marks[sub.name] == "A" || student.marks[sub.name] == "AB")) displayMark = student.marks[sub.name]!; else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
-                      }
-                      subjectCells.add(DataCell(Text(displayMark)));
-                    }
-                    double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-                    return DataRow(color: MaterialStateProperty.all(entry.key.isEven ? Colors.grey[100] : Colors.white), cells: [DataCell(SizedBox(width: 50, child: Text(student.rollNo))), DataCell(Text(student.name.isEmpty ? '-' : student.name)), ...subjectCells, DataCell(Text(totalObtained.toStringAsFixed(1))), DataCell(Text('${pct.toStringAsFixed(2)}%')), DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold)))]);
-                  }).toList(),
-                ),
               ),
             ),
         ),
@@ -1393,4 +1474,3 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
     );
   }
 }
-
