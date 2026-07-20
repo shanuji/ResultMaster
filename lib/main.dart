@@ -102,7 +102,12 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, filePath);
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path, 
+      version: 2, 
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
   Future _createDB(Database db, int version) async {
@@ -123,6 +128,7 @@ class DatabaseHelper {
         include_in_pass_fail INTEGER NOT NULL,
         theme_color INTEGER NOT NULL,
         components_json TEXT,
+        require_pass_per_component INTEGER DEFAULT 0,
         FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE
       )
     ''');
@@ -148,6 +154,12 @@ class DatabaseHelper {
     ''');
   }
 
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE subjects ADD COLUMN require_pass_per_component INTEGER DEFAULT 0');
+    }
+  }
+
   Future<void> restoreDatabaseFile(File backupFile) async {
     if (_database != null) {
       await _database!.close();
@@ -167,29 +179,29 @@ class DatabaseHelper {
   Future<int> createWorkbook(String title, List<SubjectSetup> subjects) async {
     final db = await instance.database;
     int workbookId = await db.insert('workbooks', {
-      'title': title,
+      'title': title.isEmpty ? 'Untitled Workbook' : title,
       'created_at': DateTime.now().toIso8601String(),
     });
 
     for (var sub in subjects) {
-      List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks}).toList();
+      List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks, 'passingMarks': c.passingMarks}).toList();
       await db.insert('subjects', {
         'workbook_id': workbookId,
         'name': sub.name,
         'max_marks': sub.maxMarks,
         'passing_marks': sub.passingMarks,
         'include_in_pass_fail': sub.includeInPassFail ? 1 : 0,
+        'require_pass_per_component': sub.requirePassPerComponent ? 1 : 0,
         'theme_color': sub.themeColor.value,
         'components_json': jsonEncode(comps),
       });
     }
 
-    List<String> defaultNames = ["Student 1", "Student 2", "Student 3"];
-    for (int i = 0; i < defaultNames.length; i++) {
+    for (int i = 0; i < 3; i++) {
       await db.insert('students', {
         'workbook_id': workbookId,
         'roll_no': (i + 1).toString(),
-        'name': defaultNames[i],
+        'name': '', 
         'remarks': '',
       });
     }
@@ -201,13 +213,14 @@ class DatabaseHelper {
     await db.update('workbooks', {'title': newTitle}, where: 'id = ?', whereArgs: [workbookId]);
     await db.delete('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
     for (var sub in newSubjects) {
-      List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks}).toList();
+      List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks, 'passingMarks': c.passingMarks}).toList();
       await db.insert('subjects', {
         'workbook_id': workbookId,
         'name': sub.name,
         'max_marks': sub.maxMarks,
         'passing_marks': sub.passingMarks,
         'include_in_pass_fail': sub.includeInPassFail ? 1 : 0,
+        'require_pass_per_component': sub.requirePassPerComponent ? 1 : 0,
         'theme_color': sub.themeColor.value,
         'components_json': jsonEncode(comps),
       });
@@ -228,11 +241,16 @@ class DatabaseHelper {
         maxMarks: map['max_marks'] as double,
         passingMarks: map['passing_marks'] as double,
         includeInPassFail: (map['include_in_pass_fail'] as int) == 1,
+        requirePassPerComponent: (map['require_pass_per_component'] as int?) == 1,
         themeColor: Color(map['theme_color'] as int),
       );
       if (map['components_json'] != null) {
         List dynamicList = jsonDecode(map['components_json'] as String);
-        sub.components = dynamicList.map((c) => SubjectComponent(name: c['name'], maxMarks: (c['maxMarks'] as num).toDouble())).toList();
+        sub.components = dynamicList.map((c) => SubjectComponent(
+          name: c['name'], 
+          maxMarks: (c['maxMarks'] as num).toDouble(),
+          passingMarks: (c['passingMarks'] as num?)?.toDouble() ?? 0.0,
+        )).toList();
       }
       return sub;
     }).toList();
@@ -302,7 +320,8 @@ class DatabaseHelper {
 class SubjectComponent {
   String name;
   double maxMarks;
-  SubjectComponent({required this.name, required this.maxMarks});
+  double passingMarks;
+  SubjectComponent({required this.name, required this.maxMarks, this.passingMarks = 0.0});
 }
 
 class SubjectSetup {
@@ -310,7 +329,7 @@ class SubjectSetup {
   double maxMarks;
   double passingMarks;
   bool includeInPassFail;
-  bool includeInPercentage;
+  bool requirePassPerComponent;
   Color themeColor;
   List<SubjectComponent> components;
 
@@ -319,7 +338,7 @@ class SubjectSetup {
     this.maxMarks = 100.0,
     this.passingMarks = 33.0,
     this.includeInPassFail = true,
-    this.includeInPercentage = true,
+    this.requirePassPerComponent = false,
     this.themeColor = Colors.blue,
     List<SubjectComponent>? components,
   }) : components = components ?? [];
@@ -365,10 +384,90 @@ class StudentRow {
     } else {
       for (var c in sub.components) {
         String val = (marks["${sub.name}_${c.name}"] ?? "").trim().toUpperCase();
-        if (val.isNotEmpty && (double.tryParse(val) != null || val == "A" || val == "AB")) return true;
+        if (val.isEmpty || (double.tryParse(val) == null && val != "A" && val != "AB")) return false;
       }
-      return false;
+      return true;
     }
+  }
+
+  bool isSubjectPassed(SubjectSetup sub) {
+    if (sub.requirePassPerComponent && sub.components.isNotEmpty) {
+      for (var c in sub.components) {
+        double cScore = double.tryParse(marks['${sub.name}_${c.name}'] ?? "") ?? 0.0;
+        if (cScore < c.passingMarks) return false;
+      }
+      return true; 
+    }
+    return getSubjectScore(sub) >= sub.passingMarks;
+  }
+}
+
+// ==========================================
+// UX HELPERS
+// ==========================================
+class AutoSelectTextField extends StatefulWidget {
+  final String initialValue;
+  final ValueChanged<String> onChanged;
+  final InputDecoration decoration;
+  final TextInputType? keyboardType;
+  final TextStyle? style;
+  final bool enabled;
+
+  const AutoSelectTextField({
+    super.key,
+    required this.initialValue,
+    required this.onChanged,
+    this.decoration = const InputDecoration(),
+    this.keyboardType,
+    this.style,
+    this.enabled = true,
+  });
+
+  @override
+  State<AutoSelectTextField> createState() => _AutoSelectTextFieldState();
+}
+
+class _AutoSelectTextFieldState extends State<AutoSelectTextField> {
+  late TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus && _controller.text.isNotEmpty) {
+        _controller.selection = TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant AutoSelectTextField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialValue != widget.initialValue && _controller.text != widget.initialValue) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      focusNode: _focusNode,
+      decoration: widget.decoration,
+      keyboardType: widget.keyboardType,
+      style: widget.style,
+      enabled: widget.enabled,
+      onChanged: widget.onChanged,
+    );
   }
 }
 
@@ -563,7 +662,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
         ),
         body: TabBarView(
           children: [
-            // TAB 1: WORKBOOKS
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _workbooks.isEmpty
@@ -575,7 +673,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                             const SizedBox(height: 16),
                             const Text('No workbooks created yet.', style: TextStyle(fontSize: 16, color: Colors.grey)),
                             const SizedBox(height: 24),
-                            ElevatedButton.icon(onPressed: _launchSetupWizard, icon: const Icon(Icons.add), label: const Text('Create New Result'))
+                            ElevatedButton.icon(onPressed: _launchSetupWizard, icon: const Icon(Icons.add), label: const Text('Create Dynamic Workbook'))
                           ],
                         ),
                       )
@@ -589,7 +687,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                             child: ListTile(
                               leading: const CircleAvatar(child: Icon(Icons.assignment)),
                               title: Text(item['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                              // UPDATED LINE BELOW: Shows date and time formatting
                               subtitle: Text('Created: ${item['created_at'].toString().substring(0, 16).replaceAll('T', ' at ')}'),
                               trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _deleteWorkbookConfirm(item['id'], item['title'])),
                               onTap: () => _openWorkbook(item['id'], item['title']),
@@ -597,8 +694,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                           );
                         },
                       ),
-            
-            // TAB 2: BACKUP AND RESTORE
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
@@ -687,7 +782,7 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
             if (row.length >= 2) {
               String roll = row[0]?.value?.toString().trim() ?? ''; String name = row[1]?.value?.toString().trim() ?? '';
               if (roll.isNotEmpty && roll.toLowerCase() != 'roll no' && roll.toLowerCase() != 'rollno') {
-                if (name.isEmpty) name = "Student $roll";
+                if (name.isEmpty) name = "";
                 newParsedList.add(StudentRow(rollNo: roll, name: name, marks: {}));
               }
             }
@@ -717,14 +812,14 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
         totalMax += sub.maxMarks;
         if (s.isSubjectAttempted(sub)) {
           double score = s.getSubjectScore(sub); totalObtained += score;
-          if (sub.includeInPassFail && score < sub.passingMarks) failed = true;
+          if (sub.includeInPassFail && !s.isSubjectPassed(sub)) failed = true;
           subValues.add(ex.DoubleCellValue(score));
         } else {
           subValues.add(ex.TextCellValue("-"));
         }
       }
       double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-      sheet.appendRow([ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name), ...subValues, ex.DoubleCellValue(totalObtained), ex.TextCellValue('${pct.toStringAsFixed(2)}%'), ex.TextCellValue(failed ? "FAIL" : "PASS")]);
+      sheet.appendRow([ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name.isEmpty ? '-' : s.name), ...subValues, ex.DoubleCellValue(totalObtained), ex.TextCellValue('${pct.toStringAsFixed(2)}%'), ex.TextCellValue(failed ? "FAIL" : "PASS")]);
     }
     var bytes = excel.encode();
     if (bytes != null) await Share.shareXFiles([XFile.fromData(Uint8List.fromList(bytes), mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', name: '$_currentTitle.xlsx')], text: 'Excel Report Card Grid');
@@ -741,12 +836,12 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
           pw.TableHelper.fromTextArray(
             headers: ['Roll No', 'Name', ..._subjects.map((s) => s.name), 'Total', '%', 'Result'],
             data: _students.map((s) {
-              double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<String> rowCells = [s.rollNo, s.name];
+              double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<String> rowCells = [s.rollNo, s.name.isEmpty ? '-' : s.name];
               for (var sub in _subjects) {
                 totalMax += sub.maxMarks;
                 if (s.isSubjectAttempted(sub)) {
                   double score = s.getSubjectScore(sub); totalObtained += score;
-                  if (sub.includeInPassFail && score < sub.passingMarks) failed = true;
+                  if (sub.includeInPassFail && !s.isSubjectPassed(sub)) failed = true;
                   rowCells.add(score.toStringAsFixed(1));
                 } else {
                   rowCells.add("-");
@@ -816,7 +911,7 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                             ElevatedButton.icon(
                               onPressed: () async {
                                 int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++;
-                                String newRoll = nextRoll.toString(); String newName = "New Student";
+                                String newRoll = nextRoll.toString(); String newName = "";
                                 await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, newRoll, newName);
                                 setState(() { _students.add(StudentRow(rollNo: newRoll, name: newName, marks: {})); });
                               },
@@ -834,8 +929,8 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                               columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Actions'))],
                               rows: filteredStudents.map((student) {
                                 return DataRow(cells: [
-                                  DataCell(TextFormField(initialValue: student.rollNo, decoration: const InputDecoration(border: InputBorder.none), onChanged: (val) async { String oldRoll = student.rollNo; student.rollNo = val; await DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, oldRoll, val, student.name); setState(() {}); })),
-                                  DataCell(TextFormField(initialValue: student.name, decoration: const InputDecoration(border: InputBorder.none), onChanged: (val) async { student.name = val; await DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, student.rollNo, student.rollNo, val); })),
+                                  DataCell(AutoSelectTextField(initialValue: student.rollNo, decoration: const InputDecoration(border: InputBorder.none, hintText: 'Roll No'), onChanged: (val) { String oldRoll = student.rollNo; student.rollNo = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, oldRoll, val, student.name); })),
+                                  DataCell(AutoSelectTextField(initialValue: student.name, decoration: InputDecoration(border: InputBorder.none, hintText: 'Student ${student.rollNo}'), onChanged: (val) { student.name = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, student.rollNo, student.rollNo, val); })),
                                   DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, student.rollNo); setState(() { _students.remove(student); }); })),
                                 ]);
                               }).toList(),
@@ -909,11 +1004,15 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
   @override
   void dispose() { for (var node in _focusNodes.values) { node.dispose(); } super.dispose(); }
   FocusNode _getFocusNode(String key) => _focusNodes.putIfAbsent(key, () => FocusNode());
-  String? _validateAndCleanInput(String input, double maxAllowed, String studentName, String componentName) {
-    String clean = input.toUpperCase().trim(); if (clean.isEmpty) return ""; if (clean == "A" || clean == "AB") return clean;
-    if (!RegExp(r'^[0-9]+(\.[0-9]+)?$').hasMatch(clean)) { _showValidationError("Invalid characters for $studentName."); return null; }
+  
+  String? _validateAndCleanInput(String input, double maxAllowed, String studentName, String componentName, {bool showSnack = true}) {
+    String clean = input.toUpperCase().trim(); 
+    if (clean == '999') return 'AB'; 
+    if (clean.isEmpty) return ""; 
+    if (clean == "A" || clean == "AB") return clean;
+    if (!RegExp(r'^[0-9]+(\.[0-9]+)?$').hasMatch(clean)) { if (showSnack) _showValidationError("Invalid characters for $studentName."); return null; }
     double? val = double.tryParse(clean);
-    if (val == null || val > maxAllowed) { _showValidationError("Invalid! $studentName cannot exceed ${maxAllowed.toStringAsFixed(0)}."); return null; }
+    if (val == null || val > maxAllowed) { if (showSnack) _showValidationError("Invalid! $studentName cannot exceed ${maxAllowed.toStringAsFixed(0)}."); return null; }
     return clean;
   }
   void _showValidationError(String message) { ScaffoldMessenger.of(context).clearSnackBars(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.redAccent, duration: const Duration(seconds: 3), behavior: SnackBarBehavior.floating)); }
@@ -923,25 +1022,28 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
     if (widget.subjects.isEmpty) return const Center(child: Text("No subjects configured."));
     if (_selectedSubjectIndex >= widget.subjects.length) _selectedSubjectIndex = 0;
     final currentSub = widget.subjects[_selectedSubjectIndex];
-    int totalStudents = widget.allStudents.length; int enteredCount = widget.allStudents.where((s) => s.isSubjectAttempted(currentSub)).length;
+    int totalStudents = widget.allStudents.length; 
+    int enteredCount = widget.allStudents.where((s) => s.isSubjectAttempted(currentSub)).length;
     bool isComplete = (enteredCount == totalStudents && totalStudents > 0);
     int passedCount = 0; int failedCount = 0; int disttCount = 0; double sumMarks = 0.0;
+    
     for (var s in widget.students) {
       if (s.isSubjectAttempted(currentSub)) {
         double score = s.getSubjectScore(currentSub); sumMarks += score;
-        if (score >= currentSub.passingMarks) passedCount++; else failedCount++;
+        if (s.isSubjectPassed(currentSub)) passedCount++; else failedCount++;
         if (score >= (currentSub.maxMarks * 0.75)) disttCount++;
       }
     }
     double qi = enteredCount > 0 ? (sumMarks / enteredCount) : 0.0;
     List<DataColumn> gridColumns = [const DataColumn(label: Text('Roll No')), const DataColumn(label: Text('Name'))];
     if (currentSub.components.isEmpty) { gridColumns.add(DataColumn(label: Text('Marks\n(Max: ${currentSub.maxMarks.toStringAsFixed(0)})'))); } 
-    else { for (var c in currentSub.components) { gridColumns.add(DataColumn(label: Text('${c.name}\n(Max: ${c.maxMarks.toStringAsFixed(0)})'))); } }
+    else { for (var c in currentSub.components) { gridColumns.add(DataColumn(label: Text('${c.name.isEmpty ? "Part" : c.name}\n(Max: ${c.maxMarks.toStringAsFixed(0)})'))); } }
 
     return Column(
       children: [
-        SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.all(8), child: Row(children: widget.subjects.asMap().entries.map((entry) => Padding(padding: const EdgeInsets.only(right: 8.0), child: ChoiceChip(label: Text(entry.value.name), selected: entry.key == _selectedSubjectIndex, selectedColor: entry.value.themeColor.withOpacity(0.4), onSelected: (selected) { if (selected) setState(() => _selectedSubjectIndex = entry.key); }))).toList())),
-        Container(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16), color: isComplete ? Colors.green[200]! : Colors.red[100]!, child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Subject: ${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})', style: const TextStyle(fontWeight: FontWeight.bold)), Text('Entered: $enteredCount / $totalStudents', style: const TextStyle(fontWeight: FontWeight.bold))])),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.all(8), child: Row(children: widget.subjects.asMap().entries.map((entry) => Padding(padding: const EdgeInsets.only(right: 8.0), child: ChoiceChip(label: Text(entry.value.name.isEmpty ? 'Unnamed' : entry.value.name), selected: entry.key == _selectedSubjectIndex, selectedColor: entry.value.themeColor.withOpacity(0.4), onSelected: (selected) { if (selected) setState(() => _selectedSubjectIndex = entry.key); }))).toList())),
+        Container(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16), color: isComplete ? Colors.green[200]! : Colors.red[100]!, child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Subject: ${currentSub.name.isEmpty ? "Unnamed" : currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})', style: const TextStyle(fontWeight: FontWeight.bold)), Text('Entered: $enteredCount / $totalStudents', style: const TextStyle(fontWeight: FontWeight.bold))])),
+        Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16), color: Colors.yellow[50], child: const Text('( 💡 Tip: Enter 999 to mark a student as Absent )', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.black87))),
         Container(margin: const EdgeInsets.all(8.0), decoration: BoxDecoration(border: Border.all(color: Colors.grey[400]!)), child: IntrinsicWidth(child: Column(children: [_buildStatRow("Passed", passedCount.toString()), _buildStatRow("Failed", failedCount.toString()), _buildStatRow("QI", qi.toStringAsFixed(2)), const Divider(height: 1, thickness: 1), _buildStatRow("DISTT", disttCount.toString(), isWhite: true)]))),
         const Divider(height: 1, thickness: 2),
         Expanded(
@@ -952,16 +1054,38 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                 columns: gridColumns,
                 rows: widget.students.asMap().entries.map((entry) {
                   int sIdx = entry.key; var student = entry.value;
-                  bool isFail = student.isSubjectAttempted(currentSub) && student.getSubjectScore(currentSub) < currentSub.passingMarks;
-                  Color? cellColor = isFail ? Colors.red[100] : null;
-                  List<DataCell> rowCells = [DataCell(Text(student.rollNo)), DataCell(Text(student.name))];
+                  String displayName = student.name.isEmpty ? 'Student ${student.rollNo}' : student.name;
+                  List<DataCell> rowCells = [DataCell(Text(student.rollNo)), DataCell(Text(displayName))];
+                  
                   if (currentSub.components.isEmpty) {
                     final fieldKey = '${student.rollNo}_${currentSub.name}';
-                    rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.marks[currentSub.name] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, currentSub.maxMarks, student.name, currentSub.name); if (verified != null) { student.marks[currentSub.name] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: currentSub.name, value: verified); } setState(() {}); }, onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}${currentSub.name}').requestFocus() : null))));
+                    bool isFail = currentSub.includeInPassFail && student.isSubjectAttempted(currentSub) && !student.isSubjectPassed(currentSub);
+                    Color? cellColor = isFail ? Colors.red[100] : null;
+                    
+                    rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(
+                      key: ValueKey(fieldKey), initialValue: student.marks[currentSub.name] ?? "", focusNode: _getFocusNode(fieldKey), 
+                      onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, currentSub.maxMarks, displayName, currentSub.name); if (verified != null) { student.marks[currentSub.name] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: currentSub.name, value: verified); } setState((){}); }, 
+                      onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}_${currentSub.name}').requestFocus() : null
+                    ))));
                   } else {
                     for (var c in currentSub.components) {
-                      String markKey = '${currentSub.name}${c.name}'; final fieldKey = '${student.rollNo}$markKey';
-                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.marks[markKey] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, c.maxMarks, student.name, c.name); if (verified != null) { student.marks[markKey] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: markKey, value: verified); } setState(() {}); }, onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}$markKey').requestFocus() : null))));
+                      String markKey = '${currentSub.name}_${c.name}'; final fieldKey = '${student.rollNo}_$markKey';
+                      bool isFail = false;
+                      if (currentSub.includeInPassFail) {
+                        if (currentSub.requirePassPerComponent) {
+                          double cScore = double.tryParse(student.marks[markKey] ?? "") ?? 0.0;
+                          if (student.marks[markKey]?.isNotEmpty == true && cScore < c.passingMarks) isFail = true;
+                        } else {
+                          isFail = student.isSubjectAttempted(currentSub) && !student.isSubjectPassed(currentSub);
+                        }
+                      }
+                      Color? cellColor = isFail ? Colors.red[100] : null;
+                      
+                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(
+                        key: ValueKey(fieldKey), initialValue: student.marks[markKey] ?? "", focusNode: _getFocusNode(fieldKey), 
+                        onFocusLostOrSubmitted: (newValue) async { final verified = _validateAndCleanInput(newValue, c.maxMarks, displayName, c.name); if (verified != null) { student.marks[markKey] = verified; await DatabaseHelper.instance.saveLiveMark(workbookId: widget.workbookId, rollNo: student.rollNo, markKey: markKey, value: verified); } setState((){}); }, 
+                        onNext: sIdx < widget.students.length - 1 ? () => _getFocusNode('${widget.students[sIdx + 1].rollNo}_$markKey').requestFocus() : null
+                      ))));
                     }
                   }
                   return DataRow(cells: rowCells);
@@ -1001,20 +1125,20 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
           scrollDirection: Axis.horizontal,
           child: DataTable(
             headingRowColor: MaterialStateProperty.all(Colors.blue[50]), sortColumnIndex: _sortColumnIndex, sortAscending: _isAscending,
-            columns: [DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('Name'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), ...widget.subjects.map((sub) => DataColumn(label: Text(sub.name))), DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), const DataColumn(label: Text('Result'))],
+            columns: [DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('Name'), onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), ...widget.subjects.map((sub) => DataColumn(label: Text(sub.name.isEmpty ? 'Unamed' : sub.name))), DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => setState(() { _sortColumnIndex = idx; _isAscending = asc; _applySort(); })), const DataColumn(label: Text('Result'))],
             rows: _sortedStudents.map((student) {
               double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; List<DataCell> subjectCells = [];
               for (var sub in widget.subjects) {
                 totalMax += sub.maxMarks; String displayMark = "-";
                 if (student.isSubjectAttempted(sub)) {
                   double score = student.getSubjectScore(sub); totalObtained += score;
-                  if (sub.includeInPassFail && score < sub.passingMarks) failed = true;
+                  if (sub.includeInPassFail && !student.isSubjectPassed(sub)) failed = true;
                   if (sub.components.isEmpty && (student.marks[sub.name] == "A" || student.marks[sub.name] == "AB")) displayMark = student.marks[sub.name]!; else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
                 }
                 subjectCells.add(DataCell(Text(displayMark)));
               }
               double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-              return DataRow(cells: [DataCell(Text(student.rollNo)), DataCell(Text(student.name)), ...subjectCells, DataCell(Text(totalObtained.toStringAsFixed(1))), DataCell(Text('${pct.toStringAsFixed(2)}%')), DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold)))]);
+              return DataRow(cells: [DataCell(Text(student.rollNo)), DataCell(Text(student.name.isEmpty ? '-' : student.name)), ...subjectCells, DataCell(Text(totalObtained.toStringAsFixed(1))), DataCell(Text('${pct.toStringAsFixed(2)}%')), DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold)))]);
             }).toList(),
           ),
         ),
@@ -1035,12 +1159,12 @@ class SummarySheetTabWidget extends StatelessWidget {
       for (var row in students) {
         if (!row.isSubjectAttempted(sub)) continue;
         double score = row.getSubjectScore(sub); appeared++; sumMarks += score;
-        if (score >= sub.passingMarks) passed++; if (score >= (sub.maxMarks * 0.75)) distinction++;
+        if (row.isSubjectPassed(sub)) passed++; if (score >= (sub.maxMarks * 0.75)) distinction++;
         if (score >= 0 && score < 21) distribution['0-20'] = distribution['0-20']! + 1; else if (score >= 21 && score < 32.9) distribution['21-32.9'] = distribution['21-32.9']! + 1; else if (score >= 33 && score < 40) distribution['33-40'] = distribution['33-40']! + 1; else if (score >= 41 && score < 50) distribution['41-50'] = distribution['41-50']! + 1; else if (score >= 51 && score < 59.9) distribution['51-59.9'] = distribution['51-59.9']! + 1; else if (score == 60) distribution['60'] = distribution['60']! + 1; else if (score >= 61 && score < 70) distribution['61-70'] = distribution['61-70']! + 1; else if (score >= 71 && score < 74.9) distribution['71-74.9'] = distribution['71-74.9']! + 1; else if (score >= 75 && score < 80) distribution['75-80'] = distribution['75-80']! + 1; else if (score >= 81 && score < 90) distribution['81-90'] = distribution['81-90']! + 1; else if (score == 90) distribution['90'] = distribution['90']! + 1; else if (score >= 91 && score < 94.9) distribution['91-94.9'] = distribution['91-94.9']! + 1; else if (score >= 95 && score <= 100) distribution['95-100'] = distribution['95-100']! + 1;
       }
       double passPct = appeared > 0 ? (passed / appeared) * 100 : 0.0; double qi = appeared > 0 ? (sumMarks / appeared) : 0.0;
       grandAppeared += appeared; grandPassed += passed; grandDistinction += distinction; distribution.forEach((key, val) => grandBrackets[key] = grandBrackets[key]! + val);
-      return DataRow(cells: [DataCell(Text(sub.name, style: const TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(appeared.toString())), DataCell(Text(passed.toString())), DataCell(Text('${passPct.toStringAsFixed(2)}%')), DataCell(Text(distinction.toString())), DataCell(Text(qi.toStringAsFixed(2))), DataCell(Text(distribution['0-20'].toString())), DataCell(Text(distribution['21-32.9'].toString())), DataCell(Text(distribution['33-40'].toString())), DataCell(Text(distribution['41-50'].toString())), DataCell(Text(distribution['51-59.9'].toString())), DataCell(Text(distribution['60'].toString())), DataCell(Text(distribution['61-70'].toString())), DataCell(Text(distribution['71-74.9'].toString())), DataCell(Text(distribution['75-80'].toString())), DataCell(Text(distribution['81-90'].toString())), DataCell(Text(distribution['90'].toString())), DataCell(Text(distribution['91-94.9'].toString())), DataCell(Text(distribution['95-100'].toString()))]);
+      return DataRow(cells: [DataCell(Text(sub.name.isEmpty ? 'Unnamed' : sub.name, style: const TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(appeared.toString())), DataCell(Text(passed.toString())), DataCell(Text('${passPct.toStringAsFixed(2)}%')), DataCell(Text(distinction.toString())), DataCell(Text(qi.toStringAsFixed(2))), DataCell(Text(distribution['0-20'].toString())), DataCell(Text(distribution['21-32.9'].toString())), DataCell(Text(distribution['33-40'].toString())), DataCell(Text(distribution['41-50'].toString())), DataCell(Text(distribution['51-59.9'].toString())), DataCell(Text(distribution['60'].toString())), DataCell(Text(distribution['61-70'].toString())), DataCell(Text(distribution['71-74.9'].toString())), DataCell(Text(distribution['75-80'].toString())), DataCell(Text(distribution['81-90'].toString())), DataCell(Text(distribution['90'].toString())), DataCell(Text(distribution['91-94.9'].toString())), DataCell(Text(distribution['95-100'].toString()))]);
     }).toList();
     final sumRow = DataRow(color: MaterialStateProperty.all(Colors.orange[100]), cells: [const DataCell(Text('SUM', style: TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(grandAppeared.toString(), style: const TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(grandPassed.toString(), style: const TextStyle(fontWeight: FontWeight.bold))), const DataCell(Text('-')), DataCell(Text(grandDistinction.toString(), style: const TextStyle(fontWeight: FontWeight.bold))), const DataCell(Text('-')), DataCell(Text(grandBrackets['0-20'].toString())), DataCell(Text(grandBrackets['21-32.9'].toString())), DataCell(Text(grandBrackets['33-40'].toString())), DataCell(Text(grandBrackets['41-50'].toString())), DataCell(Text(grandBrackets['51-59.9'].toString())), DataCell(Text(grandBrackets['60'].toString())), DataCell(Text(grandBrackets['61-70'].toString())), DataCell(Text(grandBrackets['71-74.9'].toString())), DataCell(Text(grandBrackets['75-80'].toString())), DataCell(Text(grandBrackets['81-90'].toString())), DataCell(Text(grandBrackets['90'].toString())), DataCell(Text(grandBrackets['91-94.9'].toString())), DataCell(Text(grandBrackets['95-100'].toString()))]);
     return Expanded(
@@ -1060,11 +1184,11 @@ class SetupWizardWidget extends StatefulWidget {
 }
 
 class _SetupWizardWidgetState extends State<SetupWizardWidget> {
-  late TextEditingController _titleController; late List<SubjectSetup> _subjects;
+  late String _wizardTitle; late List<SubjectSetup> _subjects;
   @override
   void initState() {
-    super.initState(); _titleController = TextEditingController(text: widget.initialTitle ?? "Class Name");
-    if (widget.initialSubjects != null) { _subjects = widget.initialSubjects!.map((s) => SubjectSetup(name: s.name, maxMarks: s.maxMarks, passingMarks: s.passingMarks, includeInPassFail: s.includeInPassFail, themeColor: s.themeColor, components: s.components.map((c) => SubjectComponent(name: c.name, maxMarks: c.maxMarks)).toList())).toList(); }
+    super.initState(); _wizardTitle = widget.initialTitle ?? "";
+    if (widget.initialSubjects != null) { _subjects = widget.initialSubjects!.map((s) => SubjectSetup(name: s.name, maxMarks: s.maxMarks, passingMarks: s.passingMarks, includeInPassFail: s.includeInPassFail, requirePassPerComponent: s.requirePassPerComponent, themeColor: s.themeColor, components: s.components.map((c) => SubjectComponent(name: c.name, maxMarks: c.maxMarks, passingMarks: c.passingMarks)).toList())).toList(); }
     else { _subjects = [SubjectSetup(name: "ENG.", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[0]), SubjectSetup(name: "HINDI", maxMarks: 100, passingMarks: 33, themeColor: widget.palette[1])]; }
   }
   @override
@@ -1074,7 +1198,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
       child: Column(
         children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(widget.initialTitle != null ? 'Edit Setup' : 'Configure Setup', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)), IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))]),
-          TextField(controller: _titleController, decoration: const InputDecoration(labelText: 'Workbook Title', border: OutlineInputBorder())), const SizedBox(height: 12),
+          AutoSelectTextField(initialValue: _wizardTitle, decoration: const InputDecoration(hintText: 'e.g. Class 3 Assessment', labelText: 'Workbook Title', border: OutlineInputBorder(), floatingLabelBehavior: FloatingLabelBehavior.always), onChanged: (val) => _wizardTitle = val), const SizedBox(height: 12),
           Expanded(
             child: ListView(
               children: [
@@ -1086,21 +1210,36 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [Expanded(child: TextFormField(initialValue: sub.name, decoration: const InputDecoration(labelText: 'Subject Name', labelStyle: TextStyle(fontWeight: FontWeight.bold)), onChanged: (val) => sub.name = val)), IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => _subjects.removeAt(index)))]),
-                          Row(children: [Expanded(child: TextFormField(key: ValueKey('${sub.name}max${sub.components.length}'), initialValue: sub.maxMarks.toStringAsFixed(0), decoration: InputDecoration(labelText: 'Max Marks', filled: sub.components.isNotEmpty, fillColor: Colors.grey[200]), keyboardType: TextInputType.number, enabled: sub.components.isEmpty, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)), const SizedBox(width: 12), Expanded(child: TextFormField(initialValue: sub.passingMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Pass Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0))]),
-                          const SizedBox(height: 8), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Bifurcations (Theory/Prac):', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)), TextButton.icon(onPressed: () => setState(() { sub.components.add(SubjectComponent(name: 'Part ${sub.components.length + 1}', maxMarks: 50)); sub.recalculateMaxMarks(); }), icon: const Icon(Icons.add, size: 16), label: const Text('Add Component'))]),
-                          if (sub.components.isNotEmpty) ...sub.components.asMap().entries.map((cEntry) { int cIdx = cEntry.key; var comp = cEntry.value; return Padding(padding: const EdgeInsets.only(left: 16.0, top: 4.0), child: Row(children: [Expanded(child: TextFormField(initialValue: comp.name, decoration: const InputDecoration(labelText: 'Comp. Name', isDense: true), onChanged: (val) => comp.name = val)), const SizedBox(width: 8), Expanded(child: TextFormField(initialValue: comp.maxMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Max Marks', isDense: true), keyboardType: TextInputType.number, onChanged: (val) { comp.maxMarks = double.tryParse(val) ?? 0.0; setState(() => sub.recalculateMaxMarks()); })), IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => setState(() { sub.components.removeAt(cIdx); sub.recalculateMaxMarks(); }))])); }).toList(),
+                          Row(children: [Expanded(child: AutoSelectTextField(initialValue: sub.name, decoration: const InputDecoration(hintText: 'e.g. Math, Science', labelText: 'Subject Name', labelStyle: TextStyle(fontWeight: FontWeight.bold), floatingLabelBehavior: FloatingLabelBehavior.always), onChanged: (val) => sub.name = val)), IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => _subjects.removeAt(index)))]),
+                          Row(children: [Expanded(child: AutoSelectTextField(key: ValueKey('${sub.name}_max_${sub.components.length}'), initialValue: sub.maxMarks.toStringAsFixed(0), decoration: InputDecoration(labelText: 'Max Marks', filled: sub.components.isNotEmpty, fillColor: Colors.grey[200]), keyboardType: TextInputType.number, enabled: sub.components.isEmpty, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)), const SizedBox(width: 12), Expanded(child: AutoSelectTextField(initialValue: sub.passingMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Pass Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0))]),
+                          const SizedBox(height: 8), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Bifurcations (Theory/Prac):', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic)), TextButton.icon(onPressed: () => setState(() { sub.components.add(SubjectComponent(name: '', maxMarks: 50)); sub.recalculateMaxMarks(); }), icon: const Icon(Icons.add, size: 16), label: const Text('Add Component'))]),
+                          
+                          if (sub.components.isNotEmpty) ...[
+                            SwitchListTile(title: const Text('Components require individual passing marks', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)), value: sub.requirePassPerComponent, activeColor: sub.themeColor, onChanged: (val) => setState(() => sub.requirePassPerComponent = val), dense: true, contentPadding: EdgeInsets.zero),
+                            ...sub.components.asMap().entries.map((cEntry) { 
+                              int cIdx = cEntry.key; var comp = cEntry.value; 
+                              return Padding(padding: const EdgeInsets.only(left: 16.0, top: 4.0), child: Row(children: [
+                                Expanded(flex: 2, child: AutoSelectTextField(initialValue: comp.name, decoration: const InputDecoration(hintText: 'e.g. Theory, Prac', labelText: 'Comp. Name', isDense: true, floatingLabelBehavior: FloatingLabelBehavior.always), onChanged: (val) => comp.name = val)), const SizedBox(width: 8), 
+                                Expanded(child: AutoSelectTextField(initialValue: comp.maxMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Max', isDense: true), keyboardType: TextInputType.number, onChanged: (val) { comp.maxMarks = double.tryParse(val) ?? 0.0; setState(() => sub.recalculateMaxMarks()); })), 
+                                if (sub.requirePassPerComponent) ...[
+                                  const SizedBox(width: 8),
+                                  Expanded(child: AutoSelectTextField(initialValue: comp.passingMarks.toStringAsFixed(0), decoration: const InputDecoration(labelText: 'Pass', isDense: true), keyboardType: TextInputType.number, onChanged: (val) => comp.passingMarks = double.tryParse(val) ?? 0.0)), 
+                                ],
+                                IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => setState(() { sub.components.removeAt(cIdx); sub.recalculateMaxMarks(); }))
+                              ])); 
+                            })
+                          ],
                           SwitchListTile(title: const Text('Count towards Final Pass/Fail', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)), value: sub.includeInPassFail, activeColor: sub.themeColor, onChanged: (val) => setState(() => sub.includeInPassFail = val), dense: true, contentPadding: EdgeInsets.zero)
                         ],
                       ),
                     ),
                   );
                 }).toList(),
-                OutlinedButton.icon(onPressed: () => setState(() => _subjects.add(SubjectSetup(name: "NEW SUBJECT", themeColor: widget.palette[_subjects.length % widget.palette.length]))), icon: const Icon(Icons.add_circle_outline), label: const Text('Add Another Subject'))
+                OutlinedButton.icon(onPressed: () => setState(() => _subjects.add(SubjectSetup(name: "", themeColor: widget.palette[_subjects.length % widget.palette.length]))), icon: const Icon(Icons.add_circle_outline), label: const Text('Add Another Subject'))
               ],
             ),
           ),
-          Padding(padding: const EdgeInsets.symmetric(vertical: 12.0), child: ElevatedButton(style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)), onPressed: () { Navigator.pop(context); widget.onSetupComplete(_titleController.text, _subjects); }, child: Text(widget.initialTitle != null ? 'Save Changes' : 'Save Setup & Build Sheets', style: const TextStyle(fontSize: 16))))
+          Padding(padding: const EdgeInsets.symmetric(vertical: 12.0), child: ElevatedButton(style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)), onPressed: () { Navigator.pop(context); widget.onSetupComplete(_wizardTitle, _subjects); }, child: Text(widget.initialTitle != null ? 'Save Changes' : 'Save Setup & Build Sheets', style: const TextStyle(fontSize: 16))))
         ],
       ),
     );
