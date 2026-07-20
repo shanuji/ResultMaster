@@ -1018,7 +1018,8 @@ class _WorkbookWorkspaceScreenState extends State<WorkbookWorkspaceScreen> {
                                 return DataRow(
                                   color: MaterialStateProperty.all(index.isEven ? Colors.grey[100] : Colors.white),
                                   cells: [
-                                    DataCell(SizedBox(width: 50, child: AutoSelectTextField(initialValue: student.rollNo, decoration: const InputDecoration(border: InputBorder.none, hintText: 'Roll'), onChanged: (val) { String oldRoll = student.rollNo; student.rollNo = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, oldRoll, val, student.name); })))),
+                                    // THIS LINE WAS FIXED (removed one extra closing parenthesis `)`)
+                                    DataCell(SizedBox(width: 50, child: AutoSelectTextField(initialValue: student.rollNo, decoration: const InputDecoration(border: InputBorder.none, hintText: 'Roll'), onChanged: (val) { String oldRoll = student.rollNo; student.rollNo = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, oldRoll, val, student.name); }))),
                                     DataCell(AutoSelectTextField(initialValue: student.name, decoration: InputDecoration(border: InputBorder.none, hintText: 'Student ${student.rollNo}'), onChanged: (val) { student.name = val; DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, student.rollNo, student.rollNo, val); })),
                                     DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, student.rollNo); setState(() { _students.remove(student); }); })),
                                   ]
@@ -1392,3 +1393,4 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
     );
   }
 }
+
