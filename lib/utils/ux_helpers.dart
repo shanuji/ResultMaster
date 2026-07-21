@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 class AutoSelectTextField extends StatefulWidget {
@@ -57,7 +56,7 @@ class _AutoSelectTextFieldState extends State<AutoSelectTextField> {
   Widget build(BuildContext context) {
     return TextField(
       controller: _controller,
-      focusNode: widget.focusNode,
+      focusNode: _focusNode, // <-- FIX: Changed from widget.focusNode to _focusNode
       decoration: widget.decoration,
       keyboardType: widget.keyboardType,
       style: widget.style,
