@@ -49,10 +49,12 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                 if (termName.isEmpty) return;
                 List<SubjectSetup> subjectsToCopy = [];
                 if (copyPrevious && sourceTerm != null) {
-                  subjectsToCopy = sourceTerm.subjects.map((s) => SubjectSetup(name: s.name, maxMarks: s.maxMarks, passingMarks: s.passingMarks, includeInPassFail: s.includeInPassFail, requirePassPerComponent: s.requirePassPerComponent, themeColor: s.themeColor, components: s.components.map((c) => SubjectComponent(name: c.name, maxMarks: c.maxMarks, passingMarks: c.passingMarks)).toList())).toList();
+                  // FIX APPLIED HERE: Added '!' to sourceTerm
+                  subjectsToCopy = sourceTerm!.subjects.map((s) => SubjectSetup(name: s.name, maxMarks: s.maxMarks, passingMarks: s.passingMarks, includeInPassFail: s.includeInPassFail, requirePassPerComponent: s.requirePassPerComponent, themeColor: s.themeColor, components: s.components.map((c) => SubjectComponent(name: c.name, maxMarks: c.maxMarks, passingMarks: c.passingMarks)).toList())).toList();
                 }
                 await DatabaseHelper.instance.createTerm(widget.workbookId, termName, subjectsToCopy);
-                Navigator.pop(context); _loadData();
+                if (context.mounted) Navigator.pop(context);
+                _loadData();
               }, child: const Text('Add Term')
             )
           ],
