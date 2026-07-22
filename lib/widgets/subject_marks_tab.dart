@@ -15,14 +15,27 @@ class SubjectMarksTabWidget extends StatefulWidget {
 class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
   int _selectedSubjectIndex = 0;
   final Map<String, FocusNode> _focusNodes = {};
+  List<String> _inputKeysOrder = []; // Used to track exact order of fields for Enter key navigation
+
   @override
   void dispose() { for (var node in _focusNodes.values) { node.dispose(); } super.dispose(); }
   FocusNode _getFocusNode(String key) => _focusNodes.putIfAbsent(key, () => FocusNode());
 
-  // ... (Keep your existing _validateAndCleanInput and _showValidationError methods here) ...
-  String? _validateAndCleanInput(String input, double maxAllowed, String studentName) {
-    String clean = input.toUpperCase().trim(); if (clean == '999') return 'AB'; if (clean.isEmpty) return ""; if (clean == "A" || clean == "AB") return clean;
-    double? val = double.tryParse(clean); if (val == null || val > maxAllowed) return null; return clean;
+  String? _validateAndCleanInput(String input, double maxAllowed) {
+    String clean = input.toUpperCase().trim(); 
+    if (clean == '999') return 'AB'; 
+    if (clean.isEmpty || clean == "A" || clean == "AB") return clean;
+    double? val = double.tryParse(clean); 
+    if (val == null || val > maxAllowed) return null; 
+    return clean;
+  }
+
+  void _showValidationError(double maxAllowed) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Error: Marks cannot exceed the maximum limit of $maxAllowed', style: const TextStyle(fontWeight: FontWeight.bold)),
+      backgroundColor: Colors.red,
+    ));
   }
 
   @override
@@ -31,10 +44,12 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
     if (_selectedSubjectIndex >= widget.subjects.length) _selectedSubjectIndex = 0;
     final currentSub = widget.subjects[_selectedSubjectIndex];
     
+    _inputKeysOrder.clear(); // Reset order for the current view
+
     List<DataColumn> gridColumns = [const DataColumn(label: Text('Roll No')), const DataColumn(label: Text('Name'))];
-    if (currentSub.components.isEmpty) { gridColumns.add(DataColumn(label: Text('Marks (Max: ${currentSub.maxMarks.toStringAsFixed(0)})'))); } 
+    if (currentSub.components.isEmpty) { gridColumns.add(DataColumn(label: Text('Marks\n(Max: ${currentSub.maxMarks.toStringAsFixed(0)})'))); } 
     else { for (var c in currentSub.components) { gridColumns.add(DataColumn(label: Text('${c.name}\n(Max: ${c.maxMarks.toStringAsFixed(0)})'))); } }
-    gridColumns.add(const DataColumn(label: Text('Promote'))); // Option A Column
+    gridColumns.add(const DataColumn(label: Text('Promote')));
 
     return Column(
       children: [
@@ -43,6 +58,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
           child: SingleChildScrollView(
             scrollDirection: Axis.vertical, child: SingleChildScrollView(
               scrollDirection: Axis.horizontal, child: DataTable(
+                columnSpacing: 20, // Reduced spacing for tighter fit
                 columns: gridColumns,
                 rows: widget.students.asMap().entries.map((entry) {
                   int sIdx = entry.key; var student = entry.value;
@@ -50,29 +66,34 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                   bool isFail = currentSub.includeInPassFail && student.isSubjectAttempted(widget.termId, currentSub) && !student.isSubjectPassed(widget.termId, currentSub);
                   Color? cellColor = isPromoted ? Colors.blue[50] : (isFail ? Colors.red[100] : (sIdx.isEven ? Colors.grey[100] : Colors.white));
                   
-                  List<DataCell> rowCells = [DataCell(SizedBox(width: 50, child: Text(student.rollNo))), DataCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name))];
+                  // Auto-fit text without SizedBox constraint
+                  List<DataCell> rowCells = [DataCell(Text(student.rollNo)), DataCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name))];
                   
                   if (currentSub.components.isEmpty) {
                     final fieldKey = '${student.rollNo}_${currentSub.name}';
-                    rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[currentSub.name] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (val) async { final verified = _validateAndCleanInput(val, currentSub.maxMarks, student.name); if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![currentSub.name] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: currentSub.name, value: verified); } setState((){}); }, onNext: null))));
+                    _inputKeysOrder.add(fieldKey);
+                    rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[currentSub.name] ?? "", focusNode: _getFocusNode(fieldKey), 
+                      onFocusLostOrSubmitted: (val) async { 
+                        final verified = _validateAndCleanInput(val, currentSub.maxMarks); 
+                        if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![currentSub.name] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: currentSub.name, value: verified); setState((){}); }
+                        else { _showValidationError(currentSub.maxMarks); _getFocusNode(fieldKey).requestFocus(); }
+                      }, 
+                      onNext: () { int idx = _inputKeysOrder.indexOf(fieldKey); if (idx != -1 && idx + 1 < _inputKeysOrder.length) FocusScope.of(context).requestFocus(_getFocusNode(_inputKeysOrder[idx + 1])); }))));
                   } else {
                     for (var c in currentSub.components) {
                       String markKey = '${currentSub.name}_${c.name}'; final fieldKey = '${student.rollNo}_$markKey';
-                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[markKey] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (val) async { final verified = _validateAndCleanInput(val, c.maxMarks, student.name); if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![markKey] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: markKey, value: verified); } setState((){}); }, onNext: null))));
+                      _inputKeysOrder.add(fieldKey);
+                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[markKey] ?? "", focusNode: _getFocusNode(fieldKey), 
+                        onFocusLostOrSubmitted: (val) async { 
+                          final verified = _validateAndCleanInput(val, c.maxMarks); 
+                          if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![markKey] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: markKey, value: verified); setState((){}); }
+                          else { _showValidationError(c.maxMarks); _getFocusNode(fieldKey).requestFocus(); }
+                        }, 
+                        onNext: () { int idx = _inputKeysOrder.indexOf(fieldKey); if (idx != -1 && idx + 1 < _inputKeysOrder.length) FocusScope.of(context).requestFocus(_getFocusNode(_inputKeysOrder[idx + 1])); }))));
                     }
                   }
                   
-                  // OPTION A: PROMOTE BUTTON
-                  rowCells.add(DataCell(IconButton(
-                    icon: Icon(isPromoted ? Icons.star : Icons.star_border, color: isPromoted ? Colors.amber : Colors.grey),
-                    tooltip: 'Promote in ${currentSub.name}',
-                    onPressed: () async {
-                      bool newVal = !isPromoted;
-                      student.termPromotions[widget.termId] ??= {}; student.termPromotions[widget.termId]![currentSub.name] = newVal;
-                      await DatabaseHelper.instance.toggleSubjectPromotion(widget.termId, student.rollNo, currentSub.name, newVal);
-                      setState(() {});
-                    }
-                  )));
+                  rowCells.add(DataCell(IconButton(icon: Icon(isPromoted ? Icons.star : Icons.star_border, color: isPromoted ? Colors.amber : Colors.grey), onPressed: () async { bool newVal = !isPromoted; student.termPromotions[widget.termId] ??= {}; student.termPromotions[widget.termId]![currentSub.name] = newVal; await DatabaseHelper.instance.toggleSubjectPromotion(widget.termId, student.rollNo, currentSub.name, newVal); setState(() {}); })));
                   return DataRow(color: MaterialStateProperty.all(sIdx.isEven ? Colors.grey[50] : Colors.white), cells: rowCells);
                 }).toList(),
               ),
