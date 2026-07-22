@@ -3,6 +3,7 @@ import '../models/data_models.dart';
 import '../database/database_helper.dart';
 import '../utils/ux_helpers.dart';
 import 'term_workspace_screen.dart';
+import 'final_result_screen.dart';
 
 class WorkbookDashboardScreen extends StatefulWidget {
   final int workbookId;
@@ -49,7 +50,6 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                 if (termName.isEmpty) return;
                 List<SubjectSetup> subjectsToCopy = [];
                 if (copyPrevious && sourceTerm != null) {
-                  // FIX APPLIED HERE: Added '!' to sourceTerm
                   subjectsToCopy = sourceTerm!.subjects.map((s) => SubjectSetup(name: s.name, maxMarks: s.maxMarks, passingMarks: s.passingMarks, includeInPassFail: s.includeInPassFail, requirePassPerComponent: s.requirePassPerComponent, themeColor: s.themeColor, components: s.components.map((c) => SubjectComponent(name: c.name, maxMarks: c.maxMarks, passingMarks: c.passingMarks)).toList())).toList();
                 }
                 await DatabaseHelper.instance.createTerm(widget.workbookId, termName, subjectsToCopy);
@@ -71,7 +71,6 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // LEFT: Terms List
           Expanded(
             flex: 1, child: Container(
               color: Colors.grey[100],
@@ -89,17 +88,16 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                     ),
                   ),
                   Padding(padding: const EdgeInsets.all(8.0), child: ElevatedButton.icon(onPressed: _showAddTermDialog, icon: const Icon(Icons.add), label: const Text("Add Term"), style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45)))),
-                  if (_terms.isNotEmpty) Padding(padding: const EdgeInsets.all(8.0), child: ElevatedButton.icon(onPressed: () {}, icon: const Icon(Icons.analytics), label: const Text("View Final Result"), style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45), backgroundColor: Colors.green, foregroundColor: Colors.white)))
+                  if (_terms.isNotEmpty) Padding(padding: const EdgeInsets.all(8.0), child: ElevatedButton.icon(onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (context) => FinalResultScreen(workbookId: widget.workbookId, workbookTitle: widget.workbookTitle))); }, icon: const Icon(Icons.analytics), label: const Text("View Final Result"), style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45), backgroundColor: Colors.green, foregroundColor: Colors.white)))
                 ],
               ),
             ),
           ),
           const VerticalDivider(width: 1, thickness: 1),
-          // RIGHT: Global Student Master List
           Expanded(
             flex: 2, child: Column(
               children: [
-                Container(padding: const EdgeInsets.all(16), color: Colors.yellow[100], width: double.infinity, child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('GLOBAL MASTER LIST', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)), child: Text('Total Students: ${_students.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))] )),
+                Container(padding: const EdgeInsets.all(16), color: Colors.yellow[100], width: double.infinity, child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('STUDENT LIST', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)), child: Text('Total Students: ${_students.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))] )),
                 Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: Row(children: [
@@ -111,9 +109,10 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                 ),
                 Expanded(
                   child: SingleChildScrollView(scrollDirection: Axis.vertical, child: DataTable(
+                    columnSpacing: 20, // Tighter fit
                     columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name'))],
                     rows: _students.asMap().entries.map((e) => DataRow(color: MaterialStateProperty.all(e.key.isEven ? Colors.grey[50] : Colors.white), cells: [
-                      DataCell(SizedBox(width: 60, child: AutoSelectTextField(initialValue: e.value.rollNo, onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; }))),
+                      DataCell(AutoSelectTextField(initialValue: e.value.rollNo, onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; })),
                       DataCell(AutoSelectTextField(initialValue: e.value.name, onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; })),
                     ])).toList(),
                   ))
