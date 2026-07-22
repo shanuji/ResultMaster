@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 class SubjectComponent {
@@ -9,6 +8,8 @@ class SubjectComponent {
 }
 
 class SubjectSetup {
+  int? id;
+  int? termId;
   String name;
   double maxMarks;
   double passingMarks;
@@ -18,6 +19,8 @@ class SubjectSetup {
   List<SubjectComponent> components;
 
   SubjectSetup({
+    this.id,
+    this.termId,
     required this.name,
     this.maxMarks = 100.0,
     this.passingMarks = 33.0,
@@ -34,54 +37,68 @@ class SubjectSetup {
   }
 }
 
+class TermSetup {
+  int id;
+  int workbookId;
+  String name;
+  List<SubjectSetup> subjects;
+
+  TermSetup({required this.id, required this.workbookId, required this.name, required this.subjects});
+}
+
 class StudentRow {
   String rollNo;
   String name;
-  Map<String, String> marks;
-  String remarks;
+  bool isPromotedOverall;
+  Map<int, Map<String, String>> termMarks; 
+  Map<int, Map<String, bool>> termPromotions; 
 
   StudentRow({
     required this.rollNo,
     required this.name,
-    required this.marks,
-    this.remarks = "",
-  });
+    this.isPromotedOverall = false,
+    Map<int, Map<String, String>>? termMarks,
+    Map<int, Map<String, bool>>? termPromotions,
+  })  : termMarks = termMarks ?? {},
+        termPromotions = termPromotions ?? {};
 
-  double getSubjectScore(SubjectSetup sub) {
+  double getSubjectScore(int termId, SubjectSetup sub) {
+    if (!termMarks.containsKey(termId)) return 0.0;
     if (sub.components.isEmpty) {
-      String val = marks[sub.name] ?? "";
-      return double.tryParse(val) ?? 0.0;
+      return double.tryParse(termMarks[termId]![sub.name] ?? "") ?? 0.0;
     } else {
       double total = 0.0;
       for (var c in sub.components) {
-        String val = marks["${sub.name}_${c.name}"] ?? "";
-        total += double.tryParse(val) ?? 0.0;
+        total += double.tryParse(termMarks[termId]!["${sub.name}_${c.name}"] ?? "") ?? 0.0;
       }
       return total;
     }
   }
 
-  bool isSubjectAttempted(SubjectSetup sub) {
+  bool isSubjectAttempted(int termId, SubjectSetup sub) {
+    if (!termMarks.containsKey(termId)) return false;
     if (sub.components.isEmpty) {
-      String val = (marks[sub.name] ?? "").trim().toUpperCase();
+      String val = (termMarks[termId]![sub.name] ?? "").trim().toUpperCase();
       return val.isNotEmpty && (double.tryParse(val) != null || val == "A" || val == "AB");
     } else {
       for (var c in sub.components) {
-        String val = (marks["${sub.name}_${c.name}"] ?? "").trim().toUpperCase();
+        String val = (termMarks[termId]!["${sub.name}_${c.name}"] ?? "").trim().toUpperCase();
         if (val.isEmpty || (double.tryParse(val) == null && val != "A" && val != "AB")) return false;
       }
       return true;
     }
   }
 
-  bool isSubjectPassed(SubjectSetup sub) {
+  bool isSubjectPassed(int termId, SubjectSetup sub) {
+    if (termPromotions[termId]?[sub.name] == true) return true; // Option A Promoted Override
+    
     if (sub.requirePassPerComponent && sub.components.isNotEmpty) {
       for (var c in sub.components) {
-        double cScore = double.tryParse(marks['${sub.name}_${c.name}'] ?? "") ?? 0.0;
+        double cScore = double.tryParse(termMarks[termId]?['${sub.name}_${c.name}'] ?? "") ?? 0.0;
         if (cScore < c.passingMarks) return false;
       }
-      return true; 
+      return true;
     }
-    return getSubjectScore(sub) >= sub.passingMarks;
+    return getSubjectScore(termId, sub) >= sub.passingMarks;
   }
 }
