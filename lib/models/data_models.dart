@@ -9,7 +9,7 @@ class SubjectComponent {
 
 class SubjectSetup {
   int? id;
-  int? termId;
+  int? workbookId;
   String name;
   double maxMarks;
   double passingMarks;
@@ -20,7 +20,7 @@ class SubjectSetup {
 
   SubjectSetup({
     this.id,
-    this.termId,
+    this.workbookId,
     required this.name,
     this.maxMarks = 100.0,
     this.passingMarks = 33.0,
@@ -41,9 +41,7 @@ class TermSetup {
   int id;
   int workbookId;
   String name;
-  List<SubjectSetup> subjects;
-
-  TermSetup({required this.id, required this.workbookId, required this.name, required this.subjects});
+  TermSetup({required this.id, required this.workbookId, required this.name});
 }
 
 class StudentRow {
@@ -90,7 +88,7 @@ class StudentRow {
   }
 
   bool isSubjectPassed(int termId, SubjectSetup sub) {
-    if (termPromotions[termId]?[sub.name] == true) return true; // Option A Promoted Override
+    if (termPromotions[termId]?[sub.name] == true) return true;
     
     if (sub.requirePassPerComponent && sub.components.isNotEmpty) {
       for (var c in sub.components) {
