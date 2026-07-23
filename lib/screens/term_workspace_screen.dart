@@ -21,7 +21,11 @@ class _TermWorkspaceScreenState extends State<TermWorkspaceScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text('${widget.term.name} Workspace'), backgroundColor: Colors.blue[50],
-          bottom: const TabBar(tabs: [Tab(icon: Icon(Icons.edit_note), text: "Subject Marks"), Tab(icon: Icon(Icons.assignment_turned_in), text: "Term Final"), Tab(icon: Icon(Icons.analytics), text: "Term Summary")]),
+          bottom: TabBar(tabs: [
+            const Tab(icon: Icon(Icons.edit_note), text: "Subject Marks"), 
+            Tab(icon: const Icon(Icons.assignment_turned_in), text: "${widget.term.name} Final"), 
+            Tab(icon: const Icon(Icons.analytics), text: "${widget.term.name} Summary")
+          ]),
         ),
         body: TabBarView(
           physics: const NeverScrollableScrollPhysics(),
