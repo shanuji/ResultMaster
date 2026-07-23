@@ -4,19 +4,8 @@ class AutoSelectTextField extends StatefulWidget {
   final String initialValue;
   final ValueChanged<String> onChanged;
   final InputDecoration decoration;
-  final TextInputType? keyboardType;
-  final TextStyle? style;
-  final bool enabled;
 
-  const AutoSelectTextField({
-    super.key,
-    required this.initialValue,
-    required this.onChanged,
-    this.decoration = const InputDecoration(),
-    this.keyboardType,
-    this.style,
-    this.enabled = true,
-  });
+  const AutoSelectTextField({super.key, required this.initialValue, required this.onChanged, this.decoration = const InputDecoration()});
 
   @override
   State<AutoSelectTextField> createState() => _AutoSelectTextFieldState();
@@ -38,29 +27,9 @@ class _AutoSelectTextFieldState extends State<AutoSelectTextField> {
   }
 
   @override
-  void didUpdateWidget(covariant AutoSelectTextField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialValue != widget.initialValue && _controller.text != widget.initialValue) {
-      _controller.text = widget.initialValue;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _focusNode.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: _controller,
-      focusNode: _focusNode,
-      decoration: widget.decoration,
-      keyboardType: widget.keyboardType,
-      style: widget.style,
-      enabled: widget.enabled,
+      controller: _controller, focusNode: _focusNode, decoration: widget.decoration,
       onChanged: widget.onChanged,
     );
   }
@@ -92,25 +61,12 @@ class _MarkInputFieldState extends State<MarkInputField> {
   void didUpdateWidget(covariant MarkInputField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialValue != widget.initialValue && _controller.text != widget.initialValue) { 
-      _controller.text = widget.initialValue; 
-      _lastSavedValue = widget.initialValue; 
+      _controller.text = widget.initialValue; _lastSavedValue = widget.initialValue; 
     }
-    if (oldWidget.focusNode != widget.focusNode) { 
-      oldWidget.focusNode.removeListener(_handleFocusChange); 
-      widget.focusNode.addListener(_handleFocusChange); 
-    }
-  }
-
-  @override
-  void dispose() { 
-    widget.focusNode.removeListener(_handleFocusChange); 
-    _controller.dispose(); 
-    super.dispose(); 
   }
 
   void _handleFocusChange() { 
     if (widget.focusNode.hasFocus) {
-      // Auto-highlight all text when tapped so typing overwrites it instantly
       if (_controller.text.isNotEmpty) {
         _controller.selection = TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
       }
@@ -125,21 +81,12 @@ class _MarkInputFieldState extends State<MarkInputField> {
   @override
   Widget build(BuildContext context) {
     return TextFormField(
-      controller: _controller, 
-      focusNode: widget.focusNode, 
-      keyboardType: const TextInputType.numberWithOptions(decimal: true), 
-      textInputAction: TextInputAction.next, 
-      textAlign: TextAlign.center, 
+      controller: _controller, focusNode: widget.focusNode, keyboardType: const TextInputType.numberWithOptions(decimal: true), 
+      textInputAction: widget.onNext != null ? TextInputAction.next : TextInputAction.done, textAlign: TextAlign.center, 
       decoration: const InputDecoration(hintText: "-", border: InputBorder.none),
       onFieldSubmitted: (val) {
-        if (val != _lastSavedValue) { 
-          _lastSavedValue = val; 
-          widget.onFocusLostOrSubmitted(val); 
-        }
-        if (widget.onNext != null) { 
-          // Do not wait for post-frame, request focus immediately to keep keyboard open
-          widget.onNext!(); 
-        }
+        if (val != _lastSavedValue) { _lastSavedValue = val; widget.onFocusLostOrSubmitted(val); }
+        if (widget.onNext != null) widget.onNext!(); 
       },
     );
   }
