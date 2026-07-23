@@ -47,7 +47,6 @@ class DatabaseHelper {
     }
   }
 
-  // --- WORKBOOKS & GLOBAL STUDENTS ---
   Future<List<Map<String, dynamic>>> fetchAllWorkbooks() async {
     final db = await instance.database; return await db.query('workbooks', orderBy: 'id DESC');
   }
@@ -76,7 +75,6 @@ class DatabaseHelper {
     await db.update('students', {'is_promoted_overall': isPromoted ? 1 : 0}, where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
   }
 
-  // --- TERMS & SUBJECTS ---
   Future<int> createTerm(int workbookId, String termName, List<SubjectSetup> subjects) async {
     final db = await instance.database;
     int termId = await db.insert('terms', {'workbook_id': workbookId, 'name': termName});
@@ -89,6 +87,12 @@ class DatabaseHelper {
       });
     }
     return termId;
+  }
+
+  // NEW METHOD: Delete Term
+  Future<void> deleteTerm(int termId) async {
+    final db = await instance.database;
+    await db.delete('terms', where: 'id = ?', whereArgs: [termId]);
   }
 
   Future<void> updateTermSubjects(int termId, List<SubjectSetup> subjects) async {
@@ -104,11 +108,8 @@ class DatabaseHelper {
     }
   }
 
-  // --- DATA LOADING ---
   Future<Map<String, dynamic>> loadFullWorkbookData(int workbookId) async {
     final db = await instance.database;
-    
-    // Load Terms & Subjects
     final termMaps = await db.query('terms', where: 'workbook_id = ?', whereArgs: [workbookId]);
     List<TermSetup> terms = [];
     for (var t in termMaps) {
@@ -129,7 +130,6 @@ class DatabaseHelper {
       terms.add(TermSetup(id: tId, workbookId: workbookId, name: t['name'] as String, subjects: subjects));
     }
 
-    // Load Students & Marks
     final studMaps = await db.query('students', where: 'workbook_id = ?', whereArgs: [workbookId], orderBy: 'CAST(roll_no AS INTEGER) ASC, roll_no ASC');
     List<StudentRow> students = studMaps.map((map) => StudentRow(
       rollNo: map['roll_no'] as String, name: map['name'] as String, isPromotedOverall: (map['is_promoted_overall'] as int) == 1,
@@ -150,7 +150,6 @@ class DatabaseHelper {
     return {'terms': terms, 'students': students};
   }
 
-  // --- SAVING MARKS & PROMOTIONS ---
   Future<void> saveLiveMark({required int termId, required String rollNo, required String markKey, required String value}) async {
     final db = await instance.database;
     await db.rawUpdate('UPDATE student_marks SET mark_value = ? WHERE term_id = ? AND roll_no = ? AND mark_key = ?', [value, termId, rollNo, markKey]);
