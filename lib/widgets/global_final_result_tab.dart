@@ -67,7 +67,6 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
             if (sub.includeInPassFail && student.isSubjectAttempted(term.id, sub) && !student.isSubjectPassed(term.id, sub)) studentFailed = true;
           }
           studentGrandTotal += subjectTotal;
-          // Shaded background for Total to create a visual break between subjects
           cells.add(DataCell(Container(color: Colors.grey.shade100, alignment: Alignment.center, child: Text(subjectTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
         } else {
           for (var comp in sub.components) {
@@ -92,7 +91,9 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
       
       bool finalPassStatus = student.isPromotedOverall ? true : !studentFailed;
       cells.add(DataCell(Center(child: Text(student.isPromotedOverall ? 'PROMOTED' : (finalPassStatus ? 'PASS' : 'FAIL'), style: TextStyle(color: finalPassStatus ? Colors.green : Colors.red, fontWeight: FontWeight.bold)))));
-      cells.add(DataCell(Center(child: Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); })))));
+      
+      // FIX APPLIED HERE: Removed the extra closing parenthesis that broke the build
+      cells.add(DataCell(Center(child: Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); }))));
 
       return DataRow(color: MaterialStateProperty.all(sIdx.isEven ? Colors.grey[50] : Colors.white), cells: cells);
     }).toList();
@@ -110,7 +111,6 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
             child: DataTable(
               columnSpacing: 25, 
               headingRowColor: MaterialStateProperty.all(Colors.blue.shade50), 
-              // THIS ADDS THE GRID LINES:
               border: TableBorder.all(color: Colors.grey.shade300, width: 1),
               columns: columns, 
               rows: rows
