@@ -18,7 +18,6 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, filePath);
-    // Upgraded to Version 4 to make Subjects global to the Workbook
     return await openDatabase(path, version: 4, onCreate: _createDB, onUpgrade: _upgradeDB);
   }
 
@@ -91,7 +90,7 @@ class DatabaseHelper {
       List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks, 'passingMarks': c.passingMarks}).toList();
       await db.insert('subjects', {
         'workbook_id': workbookId, 'name': sub.name, 'max_marks': sub.maxMarks, 'passing_marks': sub.passingMarks,
-        'include_in_pass_fail': sub.includeInPassFail ? 1 : 0, 'require_pass_per_component': sub.requirePassPerComponent ? 1 : 0,
+        'include_in_pass_fail': sub.includeInPassFail ? 1 : 0, 'require_pass_per_component': 0,
         'theme_color': sub.themeColor.value, 'components_json': jsonEncode(comps),
       });
     }
@@ -100,13 +99,12 @@ class DatabaseHelper {
   Future<Map<String, dynamic>> loadFullWorkbookData(int workbookId) async {
     final db = await instance.database;
     
-    // Load Global Subjects
     final subMaps = await db.query('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
     List<SubjectSetup> subjects = subMaps.map((map) {
       var sub = SubjectSetup(
         id: map['id'] as int, workbookId: workbookId, name: map['name'] as String, maxMarks: map['max_marks'] as double,
         passingMarks: map['passing_marks'] as double, includeInPassFail: (map['include_in_pass_fail'] as int) == 1,
-        requirePassPerComponent: (map['require_pass_per_component'] as int?) == 1, themeColor: Color(map['theme_color'] as int),
+        themeColor: Color(map['theme_color'] as int),
       );
       if (map['components_json'] != null) {
         List dynamicList = jsonDecode(map['components_json'] as String);
@@ -115,11 +113,9 @@ class DatabaseHelper {
       return sub;
     }).toList();
 
-    // Load Terms
     final termMaps = await db.query('terms', where: 'workbook_id = ?', whereArgs: [workbookId]);
     List<TermSetup> terms = termMaps.map((t) => TermSetup(id: t['id'] as int, workbookId: workbookId, name: t['name'] as String)).toList();
 
-    // Load Students & Marks
     final studMaps = await db.query('students', where: 'workbook_id = ?', whereArgs: [workbookId], orderBy: 'CAST(roll_no AS INTEGER) ASC, roll_no ASC');
     List<StudentRow> students = studMaps.map((map) => StudentRow(rollNo: map['roll_no'] as String, name: map['name'] as String, isPromotedOverall: (map['is_promoted_overall'] as int) == 1)).toList();
 
