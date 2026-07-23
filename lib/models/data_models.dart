@@ -14,7 +14,6 @@ class SubjectSetup {
   double maxMarks;
   double passingMarks;
   bool includeInPassFail;
-  bool requirePassPerComponent;
   Color themeColor;
   List<SubjectComponent> components;
 
@@ -25,7 +24,6 @@ class SubjectSetup {
     this.maxMarks = 100.0,
     this.passingMarks = 33.0,
     this.includeInPassFail = true,
-    this.requirePassPerComponent = false,
     this.themeColor = Colors.blue,
     List<SubjectComponent>? components,
   }) : components = components ?? [];
@@ -88,15 +86,20 @@ class StudentRow {
   }
 
   bool isSubjectPassed(int termId, SubjectSetup sub) {
+    // 1. Check for manual override
     if (termPromotions[termId]?[sub.name] == true) return true;
     
-    if (sub.requirePassPerComponent && sub.components.isNotEmpty) {
+    // 2. Check individual components dynamically (If pass marks > 0, it's mandatory)
+    if (sub.components.isNotEmpty) {
       for (var c in sub.components) {
-        double cScore = double.tryParse(termMarks[termId]?['${sub.name}_${c.name}'] ?? "") ?? 0.0;
-        if (cScore < c.passingMarks) return false;
+        if (c.passingMarks > 0) {
+          double cScore = double.tryParse(termMarks[termId]?['${sub.name}_${c.name}'] ?? "") ?? 0.0;
+          if (cScore < c.passingMarks) return false;
+        }
       }
-      return true;
     }
+    
+    // 3. Check overall subject total
     return getSubjectScore(termId, sub) >= sub.passingMarks;
   }
 }
