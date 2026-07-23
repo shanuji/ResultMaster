@@ -22,7 +22,15 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
   void initState() { super.initState(); _loadData(); }
 
   Future<void> _loadData() async {
-    final data = await DatabaseHelper.instance.loadFullWorkbookData(widget.workbookId);
+    var data = await DatabaseHelper.instance.loadFullWorkbookData(widget.workbookId);
+    
+    // Auto-populate 2 students if the workbook is brand new
+    if (data['students'].isEmpty) {
+      await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, "1", "Student 1");
+      await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, "2", "Student 2");
+      data = await DatabaseHelper.instance.loadFullWorkbookData(widget.workbookId);
+    }
+    
     setState(() { _terms = data['terms']; _students = data['students']; _isLoading = false; });
   }
 
@@ -35,7 +43,7 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(decoration: const InputDecoration(labelText: 'Term Name (e.g. Term 2)'), onChanged: (val) => termName = val),
+              TextField(decoration: const InputDecoration(labelText: 'Term Name (e.g. Term 2)'), autofocus: true, onChanged: (val) => termName = val),
               if (_terms.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 SwitchListTile(title: const Text("Copy subjects & components from previous term", style: TextStyle(fontSize: 14)), value: copyPrevious, onChanged: (val) => setDialogState(() => copyPrevious = val)),
@@ -47,18 +55,38 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
             ElevatedButton(
               onPressed: () async {
-                if (termName.isEmpty) return;
+                if (termName.trim().isEmpty) return;
+                // Prevent duplicate terms
+                if (_terms.any((t) => t.name.trim().toLowerCase() == termName.trim().toLowerCase())) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A term with this name already exists!'), backgroundColor: Colors.red));
+                  return;
+                }
+                
                 List<SubjectSetup> subjectsToCopy = [];
                 if (copyPrevious && sourceTerm != null) {
                   subjectsToCopy = sourceTerm!.subjects.map((s) => SubjectSetup(name: s.name, maxMarks: s.maxMarks, passingMarks: s.passingMarks, includeInPassFail: s.includeInPassFail, requirePassPerComponent: s.requirePassPerComponent, themeColor: s.themeColor, components: s.components.map((c) => SubjectComponent(name: c.name, maxMarks: c.maxMarks, passingMarks: c.passingMarks)).toList())).toList();
                 }
-                await DatabaseHelper.instance.createTerm(widget.workbookId, termName, subjectsToCopy);
+                await DatabaseHelper.instance.createTerm(widget.workbookId, termName.trim(), subjectsToCopy);
                 if (context.mounted) Navigator.pop(context);
                 _loadData();
               }, child: const Text('Add Term')
             )
           ],
         )
+      )
+    );
+  }
+
+  void _deleteTermConfirm(int termId, String termName) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Term?'),
+        content: Text('Are you sure you want to delete "$termName"? All marks inside this term will be permanently lost.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(onPressed: () async { await DatabaseHelper.instance.deleteTerm(termId); Navigator.pop(context); _loadData(); }, child: const Text('Delete', style: TextStyle(color: Colors.red))),
+        ],
       )
     );
   }
@@ -81,7 +109,9 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                     child: ListView.builder(
                       itemCount: _terms.length, itemBuilder: (context, index) {
                         return ListTile(
-                          leading: const Icon(Icons.folder), title: Text(_terms[index].name, style: const TextStyle(fontWeight: FontWeight.bold)), trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                          leading: const Icon(Icons.folder), 
+                          title: Text(_terms[index].name, style: const TextStyle(fontWeight: FontWeight.bold)), 
+                          trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20), onPressed: () => _deleteTermConfirm(_terms[index].id, _terms[index].name)),
                           onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (context) => TermWorkspaceScreen(term: _terms[index], allStudents: _students))); _loadData(); },
                         );
                       }
@@ -103,17 +133,17 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                   child: Row(children: [
                     ElevatedButton.icon(onPressed: () async {
                       int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++;
-                      await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), ""); _loadData();
+                      await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), "Student $nextRoll"); _loadData();
                     }, icon: const Icon(Icons.person_add, size: 18), label: const Text('Add Student')),
                   ]),
                 ),
                 Expanded(
                   child: SingleChildScrollView(scrollDirection: Axis.vertical, child: DataTable(
-                    columnSpacing: 20, // Tighter fit
+                    columnSpacing: 20,
                     columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name'))],
                     rows: _students.asMap().entries.map((e) => DataRow(color: MaterialStateProperty.all(e.key.isEven ? Colors.grey[50] : Colors.white), cells: [
-                      DataCell(AutoSelectTextField(initialValue: e.value.rollNo, onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; })),
-                      DataCell(AutoSelectTextField(initialValue: e.value.name, onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; })),
+                      DataCell(AutoSelectTextField(initialValue: e.value.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; })),
+                      DataCell(AutoSelectTextField(initialValue: e.value.name, decoration: const InputDecoration(hintText: 'Student Name', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; })),
                     ])).toList(),
                   ))
                 )
