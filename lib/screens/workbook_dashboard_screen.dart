@@ -25,14 +25,11 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
 
   Future<void> _loadData() async {
     var data = await DatabaseHelper.instance.loadFullWorkbookData(widget.workbookId);
-    
-    // Auto-populate 2 students if brand new (using empty strings so hints show)
     if (data['students'].isEmpty) {
       await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, "1", "");
       await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, "2", "");
       data = await DatabaseHelper.instance.loadFullWorkbookData(widget.workbookId);
     }
-    
     setState(() { _terms = data['terms']; _students = data['students']; _subjects = data['subjects']; _isLoading = false; });
   }
 
@@ -85,74 +82,74 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
         body: TabBarView(
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            // TAB 1: Terms & Students Dashboard
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 1, child: Container(
-                    color: Colors.grey[100],
-                    child: Column(
-                      children: [
-                        Container(padding: const EdgeInsets.all(16), color: Colors.blue[100], width: double.infinity, child: const Text('TERMS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: _terms.length, itemBuilder: (context, index) {
-                              return ListTile(
-                                leading: const Icon(Icons.folder), title: Text(_terms[index].name, style: const TextStyle(fontWeight: FontWeight.bold)), 
-                                trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20), onPressed: () => _deleteConfirmation("Term", _terms[index].name, () async { await DatabaseHelper.instance.deleteTerm(_terms[index].id); _loadData(); })),
-                                onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (context) => TermWorkspaceScreen(term: _terms[index], subjects: _subjects, allStudents: _students))); _loadData(); },
-                              );
-                            }
+            // TAB 1: Clean, Card-based Dashboard
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 1, 
+                    child: Card(
+                      elevation: 2, clipBehavior: Clip.antiAlias, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        children: [
+                          Container(padding: const EdgeInsets.all(16), color: Colors.blue.shade50, width: double.infinity, child: const Text('TERMS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                          Expanded(
+                            child: ListView.builder(
+                              itemCount: _terms.length, itemBuilder: (context, index) {
+                                return ListTile(
+                                  leading: const Icon(Icons.folder, color: Colors.blue), title: Text(_terms[index].name, style: const TextStyle(fontWeight: FontWeight.bold)), 
+                                  trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20), onPressed: () => _deleteConfirmation("Term", _terms[index].name, () async { await DatabaseHelper.instance.deleteTerm(_terms[index].id); _loadData(); })),
+                                  onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (context) => TermWorkspaceScreen(term: _terms[index], subjects: _subjects, allStudents: _students))); _loadData(); },
+                                );
+                              }
+                            ),
                           ),
-                        ),
-                        Padding(padding: const EdgeInsets.all(8.0), child: ElevatedButton.icon(onPressed: _showAddTermDialog, icon: const Icon(Icons.add), label: const Text("Add Term"), style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45)))),
-                      ],
+                          Padding(padding: const EdgeInsets.all(8.0), child: ElevatedButton.icon(onPressed: _showAddTermDialog, icon: const Icon(Icons.add), label: const Text("Add Term"), style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45)))),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const VerticalDivider(width: 1, thickness: 1),
-                Expanded(
-                  flex: 2, child: Column(
-                    children: [
-                      Container(padding: const EdgeInsets.all(16), color: Colors.yellow[100], width: double.infinity, child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('STUDENT LIST', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)), child: Text('Total Students: ${_students.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))] )),
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Row(children: [
-                          ElevatedButton.icon(onPressed: () async {
-                            int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++;
-                            await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), ""); _loadData();
-                          }, icon: const Icon(Icons.person_add, size: 18), label: const Text('Add Student')),
-                        ]),
-                      ),
-                      Expanded(
-                        child: SingleChildScrollView(scrollDirection: Axis.vertical, child: DataTable(
-                          columnSpacing: 20,
-                          columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Action'))],
-                          rows: _students.asMap().entries.map((e) => DataRow(color: MaterialStateProperty.all(e.key.isEven ? Colors.grey[50] : Colors.white), cells: [
-                            DataCell(AutoSelectTextField(initialValue: e.value.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; })),
-                            // FIX: Blank name acts as Hint!
-                            DataCell(AutoSelectTextField(initialValue: e.value.name, decoration: InputDecoration(hintText: 'Student ${e.value.rollNo}', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; })),
-                            DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteConfirmation("Student", e.value.name.isEmpty ? 'Student ${e.value.rollNo}' : e.value.name, () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, e.value.rollNo); _loadData(); }))),
-                          ])).toList(),
-                        ))
+                  Expanded(
+                    flex: 2, 
+                    child: Card(
+                      elevation: 2, clipBehavior: Clip.antiAlias, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        children: [
+                          Container(padding: const EdgeInsets.all(16), color: Colors.yellow.shade50, width: double.infinity, child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('STUDENT LIST', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)), child: Text('Total Students: ${_students.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))] )),
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Row(children: [
+                              ElevatedButton.icon(onPressed: () async {
+                                int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++;
+                                await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), ""); _loadData();
+                              }, icon: const Icon(Icons.person_add, size: 18), label: const Text('Add Student')),
+                            ]),
+                          ),
+                          Expanded(
+                            child: SingleChildScrollView(scrollDirection: Axis.vertical, child: DataTable(
+                              columnSpacing: 20,
+                              columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Action'))],
+                              rows: _students.asMap().entries.map((e) => DataRow(color: MaterialStateProperty.all(e.key.isEven ? Colors.grey[50] : Colors.white), cells: [
+                                DataCell(AutoSelectTextField(initialValue: e.value.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; })),
+                                DataCell(AutoSelectTextField(initialValue: e.value.name, decoration: InputDecoration(hintText: 'Student ${e.value.rollNo}', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; })),
+                                DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteConfirmation("Student", e.value.name.isEmpty ? 'Student ${e.value.rollNo}' : e.value.name, () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, e.value.rollNo); _loadData(); }))),
+                              ])).toList(),
+                            ))
+                          )
+                        ],
                       )
-                    ],
+                    )
                   )
-                )
-              ],
+                ],
+              ),
             ),
-            // TAB 2: Global Subjects Setup Wizard
+            // TAB 2 & 3
             SetupWizardWidget(
-              palette: const [Colors.blue, Colors.purple, Colors.teal, Colors.indigo, Colors.pink, Colors.orange],
-              initialSubjects: _subjects,
-              onSetupComplete: (_, subjects) async {
-                await DatabaseHelper.instance.updateWorkbookSubjects(widget.workbookId, subjects);
-                _loadData();
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Global Subjects Saved Successfully!'), backgroundColor: Colors.green));
-              },
+              palette: const [Colors.blue, Colors.purple, Colors.teal, Colors.indigo, Colors.pink, Colors.orange], initialSubjects: _subjects,
+              onSetupComplete: (_, subjects) async { await DatabaseHelper.instance.updateWorkbookSubjects(widget.workbookId, subjects); _loadData(); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Global Subjects Saved Successfully!'), backgroundColor: Colors.green)); },
             ),
-            // TAB 3: Global Final Result Grid
             GlobalFinalResultTabWidget(workbookId: widget.workbookId, terms: _terms, subjects: _subjects, students: _students),
           ],
         ),
