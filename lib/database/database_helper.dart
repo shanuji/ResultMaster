@@ -18,17 +18,18 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = p.join(dbPath, filePath);
-    return await openDatabase(path, version: 3, onCreate: _createDB, onUpgrade: _upgradeDB);
+    // Upgraded to Version 4 to make Subjects global to the Workbook
+    return await openDatabase(path, version: 4, onCreate: _createDB, onUpgrade: _upgradeDB);
   }
 
   Future _createDB(Database db, int version) async {
     await db.execute('CREATE TABLE workbooks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created_at TEXT NOT NULL)');
     await db.execute('CREATE TABLE terms (id INTEGER PRIMARY KEY AUTOINCREMENT, workbook_id INTEGER NOT NULL, name TEXT NOT NULL, FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE)');
     await db.execute('''CREATE TABLE subjects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, term_id INTEGER NOT NULL, name TEXT NOT NULL,
+        id INTEGER PRIMARY KEY AUTOINCREMENT, workbook_id INTEGER NOT NULL, name TEXT NOT NULL,
         max_marks REAL NOT NULL, passing_marks REAL NOT NULL, include_in_pass_fail INTEGER NOT NULL,
         theme_color INTEGER NOT NULL, components_json TEXT, require_pass_per_component INTEGER DEFAULT 0,
-        FOREIGN KEY (term_id) REFERENCES terms (id) ON DELETE CASCADE)''');
+        FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE)''');
     await db.execute('''CREATE TABLE students (
         id INTEGER PRIMARY KEY AUTOINCREMENT, workbook_id INTEGER NOT NULL, roll_no TEXT NOT NULL,
         name TEXT NOT NULL, is_promoted_overall INTEGER DEFAULT 0,
@@ -40,7 +41,7 @@ class DatabaseHelper {
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 3) {
+    if (oldVersion < 4) {
       await db.execute('DROP TABLE IF EXISTS student_marks'); await db.execute('DROP TABLE IF EXISTS students');
       await db.execute('DROP TABLE IF EXISTS subjects'); await db.execute('DROP TABLE IF EXISTS terms');
       await db.execute('DROP TABLE IF EXISTS workbooks'); await _createDB(db, newVersion);
@@ -50,18 +51,20 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> fetchAllWorkbooks() async {
     final db = await instance.database; return await db.query('workbooks', orderBy: 'id DESC');
   }
-
   Future<int> createWorkbook(String title) async {
-    final db = await instance.database;
-    return await db.insert('workbooks', {'title': title.isEmpty ? 'Untitled Workbook' : title, 'created_at': DateTime.now().toIso8601String()});
+    final db = await instance.database; return await db.insert('workbooks', {'title': title.isEmpty ? 'Untitled Workbook' : title, 'created_at': DateTime.now().toIso8601String()});
   }
-  
   Future<void> deleteWorkbook(int id) async {
     final db = await instance.database; await db.delete('workbooks', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> insertLiveStudent(int workbookId, String rollNo, String name) async {
     final db = await instance.database; await db.insert('students', {'workbook_id': workbookId, 'roll_no': rollNo, 'name': name, 'is_promoted_overall': 0});
+  }
+  Future<void> deleteLiveStudent(int workbookId, String rollNo) async {
+    final db = await instance.database;
+    await db.delete('students', where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
+    await db.rawDelete('DELETE FROM student_marks WHERE roll_no = ? AND term_id IN (SELECT id FROM terms WHERE workbook_id = ?)', [rollNo, workbookId]);
   }
   Future<void> updateLiveStudentInfo(int workbookId, String oldRollNo, String newRollNo, String name) async {
     final db = await instance.database;
@@ -71,37 +74,23 @@ class DatabaseHelper {
     }
   }
   Future<void> updateStudentOverallPromotion(int workbookId, String rollNo, bool isPromoted) async {
-    final db = await instance.database;
-    await db.update('students', {'is_promoted_overall': isPromoted ? 1 : 0}, where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
+    final db = await instance.database; await db.update('students', {'is_promoted_overall': isPromoted ? 1 : 0}, where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
   }
 
-  Future<int> createTerm(int workbookId, String termName, List<SubjectSetup> subjects) async {
-    final db = await instance.database;
-    int termId = await db.insert('terms', {'workbook_id': workbookId, 'name': termName});
-    for (var sub in subjects) {
-      List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks, 'passingMarks': c.passingMarks}).toList();
-      await db.insert('subjects', {
-        'term_id': termId, 'name': sub.name, 'max_marks': sub.maxMarks, 'passing_marks': sub.passingMarks,
-        'include_in_pass_fail': sub.includeInPassFail ? 1 : 0, 'require_pass_per_component': sub.requirePassPerComponent ? 1 : 0,
-        'theme_color': sub.themeColor.value, 'components_json': jsonEncode(comps),
-      });
-    }
-    return termId;
+  Future<int> createTerm(int workbookId, String termName) async {
+    final db = await instance.database; return await db.insert('terms', {'workbook_id': workbookId, 'name': termName});
   }
-
-  // NEW METHOD: Delete Term
   Future<void> deleteTerm(int termId) async {
-    final db = await instance.database;
-    await db.delete('terms', where: 'id = ?', whereArgs: [termId]);
+    final db = await instance.database; await db.delete('terms', where: 'id = ?', whereArgs: [termId]);
   }
 
-  Future<void> updateTermSubjects(int termId, List<SubjectSetup> subjects) async {
+  Future<void> updateWorkbookSubjects(int workbookId, List<SubjectSetup> subjects) async {
     final db = await instance.database;
-    await db.delete('subjects', where: 'term_id = ?', whereArgs: [termId]);
+    await db.delete('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
     for (var sub in subjects) {
       List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks, 'passingMarks': c.passingMarks}).toList();
       await db.insert('subjects', {
-        'term_id': termId, 'name': sub.name, 'max_marks': sub.maxMarks, 'passing_marks': sub.passingMarks,
+        'workbook_id': workbookId, 'name': sub.name, 'max_marks': sub.maxMarks, 'passing_marks': sub.passingMarks,
         'include_in_pass_fail': sub.includeInPassFail ? 1 : 0, 'require_pass_per_component': sub.requirePassPerComponent ? 1 : 0,
         'theme_color': sub.themeColor.value, 'components_json': jsonEncode(comps),
       });
@@ -110,30 +99,29 @@ class DatabaseHelper {
 
   Future<Map<String, dynamic>> loadFullWorkbookData(int workbookId) async {
     final db = await instance.database;
-    final termMaps = await db.query('terms', where: 'workbook_id = ?', whereArgs: [workbookId]);
-    List<TermSetup> terms = [];
-    for (var t in termMaps) {
-      int tId = t['id'] as int;
-      final subMaps = await db.query('subjects', where: 'term_id = ?', whereArgs: [tId]);
-      List<SubjectSetup> subjects = subMaps.map((map) {
-        var sub = SubjectSetup(
-          id: map['id'] as int, termId: tId, name: map['name'] as String, maxMarks: map['max_marks'] as double,
-          passingMarks: map['passing_marks'] as double, includeInPassFail: (map['include_in_pass_fail'] as int) == 1,
-          requirePassPerComponent: (map['require_pass_per_component'] as int?) == 1, themeColor: Color(map['theme_color'] as int),
-        );
-        if (map['components_json'] != null) {
-          List dynamicList = jsonDecode(map['components_json'] as String);
-          sub.components = dynamicList.map((c) => SubjectComponent(name: c['name'], maxMarks: (c['maxMarks'] as num).toDouble(), passingMarks: (c['passingMarks'] as num?)?.toDouble() ?? 0.0)).toList();
-        }
-        return sub;
-      }).toList();
-      terms.add(TermSetup(id: tId, workbookId: workbookId, name: t['name'] as String, subjects: subjects));
-    }
+    
+    // Load Global Subjects
+    final subMaps = await db.query('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
+    List<SubjectSetup> subjects = subMaps.map((map) {
+      var sub = SubjectSetup(
+        id: map['id'] as int, workbookId: workbookId, name: map['name'] as String, maxMarks: map['max_marks'] as double,
+        passingMarks: map['passing_marks'] as double, includeInPassFail: (map['include_in_pass_fail'] as int) == 1,
+        requirePassPerComponent: (map['require_pass_per_component'] as int?) == 1, themeColor: Color(map['theme_color'] as int),
+      );
+      if (map['components_json'] != null) {
+        List dynamicList = jsonDecode(map['components_json'] as String);
+        sub.components = dynamicList.map((c) => SubjectComponent(name: c['name'], maxMarks: (c['maxMarks'] as num).toDouble(), passingMarks: (c['passingMarks'] as num?)?.toDouble() ?? 0.0)).toList();
+      }
+      return sub;
+    }).toList();
 
+    // Load Terms
+    final termMaps = await db.query('terms', where: 'workbook_id = ?', whereArgs: [workbookId]);
+    List<TermSetup> terms = termMaps.map((t) => TermSetup(id: t['id'] as int, workbookId: workbookId, name: t['name'] as String)).toList();
+
+    // Load Students & Marks
     final studMaps = await db.query('students', where: 'workbook_id = ?', whereArgs: [workbookId], orderBy: 'CAST(roll_no AS INTEGER) ASC, roll_no ASC');
-    List<StudentRow> students = studMaps.map((map) => StudentRow(
-      rollNo: map['roll_no'] as String, name: map['name'] as String, isPromotedOverall: (map['is_promoted_overall'] as int) == 1,
-    )).toList();
+    List<StudentRow> students = studMaps.map((map) => StudentRow(rollNo: map['roll_no'] as String, name: map['name'] as String, isPromotedOverall: (map['is_promoted_overall'] as int) == 1)).toList();
 
     for (var term in terms) {
       final markMaps = await db.query('student_marks', where: 'term_id = ?', whereArgs: [term.id]);
@@ -147,7 +135,7 @@ class DatabaseHelper {
         }
       }
     }
-    return {'terms': terms, 'students': students};
+    return {'terms': terms, 'students': students, 'subjects': subjects};
   }
 
   Future<void> saveLiveMark({required int termId, required String rollNo, required String markKey, required String value}) async {
