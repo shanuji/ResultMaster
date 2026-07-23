@@ -56,7 +56,7 @@ class _AutoSelectTextFieldState extends State<AutoSelectTextField> {
   Widget build(BuildContext context) {
     return TextField(
       controller: _controller,
-      focusNode: _focusNode, // <-- FIX: Changed from widget.focusNode to _focusNode
+      focusNode: _focusNode,
       decoration: widget.decoration,
       keyboardType: widget.keyboardType,
       style: widget.style,
@@ -109,7 +109,12 @@ class _MarkInputFieldState extends State<MarkInputField> {
   }
 
   void _handleFocusChange() { 
-    if (!widget.focusNode.hasFocus) { 
+    if (widget.focusNode.hasFocus) {
+      // Auto-highlight all text when tapped so typing overwrites it instantly
+      if (_controller.text.isNotEmpty) {
+        _controller.selection = TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
+      }
+    } else {
       if (_controller.text != _lastSavedValue) { 
         _lastSavedValue = _controller.text; 
         widget.onFocusLostOrSubmitted(_controller.text); 
@@ -132,7 +137,8 @@ class _MarkInputFieldState extends State<MarkInputField> {
           widget.onFocusLostOrSubmitted(val); 
         }
         if (widget.onNext != null) { 
-          WidgetsBinding.instance.addPostFrameCallback((_) { widget.onNext!(); }); 
+          // Do not wait for post-frame, request focus immediately to keep keyboard open
+          widget.onNext!(); 
         }
       },
     );
