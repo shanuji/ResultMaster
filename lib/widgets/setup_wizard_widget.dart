@@ -24,10 +24,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
   }
 
   void _confirmDelete(String message, VoidCallback onDelete) {
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('Confirm Deletion'), content: Text(message),
-      actions: [ TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Navigator.pop(context); onDelete(); }, child: const Text('Delete', style: TextStyle(color: Colors.red))) ]
-    ));
+    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Confirm Deletion'), content: Text(message), actions: [ TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Navigator.pop(context); onDelete(); }, child: const Text('Delete', style: TextStyle(color: Colors.red))) ]));
   }
 
   void _addSubject() { setState(() { _subjects.add(SubjectSetup(name: '', themeColor: widget.palette[_subjects.length % widget.palette.length])); }); }
@@ -39,32 +36,31 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Container(width: double.infinity, color: Colors.blue[50], padding: const EdgeInsets.all(12), child: const Text('These subjects are GLOBAL. They apply automatically to every Term you create.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue), textAlign: TextAlign.center)),
+        Container(width: double.infinity, color: Colors.blue[50], padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), child: const Text('These subjects are GLOBAL. They apply automatically to every Term.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 13), textAlign: TextAlign.center)),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.all(16), itemCount: _subjects.length, itemBuilder: (context, index) {
+            padding: const EdgeInsets.all(8), itemCount: _subjects.length, itemBuilder: (context, index) {
               final sub = _subjects[index];
               return Card(
-                margin: const EdgeInsets.only(bottom: 16), elevation: 3, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: sub.themeColor, width: 2)),
+                margin: const EdgeInsets.only(bottom: 8), elevation: 2, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: sub.themeColor, width: 2)),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(8), // FIX: Reduced padding significantly
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(children: [ Expanded(child: TextFormField(initialValue: sub.name, decoration: const InputDecoration(labelText: 'Subject Name', border: OutlineInputBorder()), onChanged: (val) => sub.name = val)), IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _removeSubject(index)) ]),
-                      const SizedBox(height: 16),
-                      SwitchListTile(title: const Text('Include in Final Pass/Fail'), value: sub.includeInPassFail, onChanged: (val) => setState(() => sub.includeInPassFail = val)),
+                      Row(children: [ Expanded(child: TextFormField(initialValue: sub.name, decoration: const InputDecoration(labelText: 'Subject Name', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)), onChanged: (val) => sub.name = val)), IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _removeSubject(index)) ]),
+                      SwitchListTile(title: const Text('Include in Pass/Fail', style: TextStyle(fontSize: 14)), value: sub.includeInPassFail, onChanged: (val) => setState(() => sub.includeInPassFail = val), dense: true, contentPadding: EdgeInsets.zero),
                       if (sub.components.isEmpty) ...[
-                        Row(children: [ Expanded(child: TextFormField(initialValue: sub.maxMarks.toString(), decoration: const InputDecoration(labelText: 'Max Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)), const SizedBox(width: 16), Expanded(child: TextFormField(initialValue: sub.passingMarks.toString(), decoration: const InputDecoration(labelText: 'Passing Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0)) ]),
+                        Row(children: [ Expanded(child: TextFormField(initialValue: sub.maxMarks.toString(), decoration: const InputDecoration(labelText: 'Max Marks', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)), keyboardType: TextInputType.number, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)), const SizedBox(width: 12), Expanded(child: TextFormField(initialValue: sub.passingMarks.toString(), decoration: const InputDecoration(labelText: 'Pass Marks', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0)) ]),
                       ] else ...[
-                        const Divider(), const Text('Components (Theory, Practical, etc.)', style: TextStyle(fontWeight: FontWeight.bold)),
-                        const Padding(padding: EdgeInsets.symmetric(vertical: 4.0), child: Text('Hint: If passing marks are left at 0, the component pass requirement is ignored.', style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic))),
+                        const Text('Components (Theory, Practical, etc.)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Text('Hint: Passing marks = 0 means component is ignored for pass requirement.', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic)),
                         ...sub.components.asMap().entries.map((cEntry) {
                           int cIdx = cEntry.key; var comp = cEntry.value;
-                          return Padding(padding: const EdgeInsets.only(top: 8.0), child: Row(children: [ Expanded(flex: 2, child: TextFormField(initialValue: comp.name, decoration: const InputDecoration(labelText: 'Comp. Name', isDense: true), onChanged: (val) => comp.name = val)), const SizedBox(width: 8), Expanded(child: TextFormField(initialValue: comp.maxMarks.toString(), decoration: const InputDecoration(labelText: 'Max', isDense: true), keyboardType: TextInputType.number, onChanged: (val) { setState(() { comp.maxMarks = double.tryParse(val) ?? 0.0; sub.recalculateMaxMarks(); }); })), const SizedBox(width: 8), Expanded(child: TextFormField(initialValue: comp.passingMarks > 0 ? comp.passingMarks.toString() : "", decoration: const InputDecoration(labelText: 'Pass', hintText: '0', isDense: true), keyboardType: TextInputType.number, onChanged: (val) => comp.passingMarks = double.tryParse(val) ?? 0.0)), IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => _removeComponent(index, cIdx), padding: EdgeInsets.zero, constraints: const BoxConstraints()) ]));
+                          return Padding(padding: const EdgeInsets.only(top: 4.0), child: Row(children: [ Expanded(flex: 2, child: TextFormField(initialValue: comp.name, decoration: const InputDecoration(labelText: 'Comp. Name', isDense: true, border: UnderlineInputBorder(), contentPadding: EdgeInsets.symmetric(vertical: 4)), onChanged: (val) => comp.name = val)), const SizedBox(width: 8), Expanded(child: TextFormField(initialValue: comp.maxMarks.toString(), decoration: const InputDecoration(labelText: 'Max', isDense: true, border: UnderlineInputBorder(), contentPadding: EdgeInsets.symmetric(vertical: 4)), keyboardType: TextInputType.number, onChanged: (val) { setState(() { comp.maxMarks = double.tryParse(val) ?? 0.0; sub.recalculateMaxMarks(); }); })), const SizedBox(width: 8), Expanded(child: TextFormField(initialValue: comp.passingMarks > 0 ? comp.passingMarks.toString() : "", decoration: const InputDecoration(labelText: 'Pass', hintText: '0', isDense: true, border: UnderlineInputBorder(), contentPadding: EdgeInsets.symmetric(vertical: 4)), keyboardType: TextInputType.number, onChanged: (val) => comp.passingMarks = double.tryParse(val) ?? 0.0)), IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20), onPressed: () => _removeComponent(index, cIdx), padding: EdgeInsets.zero, constraints: const BoxConstraints()) ]));
                         }),
                       ],
-                      const SizedBox(height: 8), TextButton.icon(onPressed: () => _addComponent(index), icon: const Icon(Icons.add_circle_outline), label: const Text('Add Sub-Component')),
+                      Center(child: TextButton.icon(onPressed: () => _addComponent(index), icon: const Icon(Icons.add_circle_outline, size: 18), label: const Text('Add Component'))),
                     ],
                   ),
                 ),
@@ -72,9 +68,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(16.0), child: Row(children: [ Expanded(child: OutlinedButton.icon(onPressed: _addSubject, icon: const Icon(Icons.add), label: const Text('Add Subject'))), const SizedBox(width: 16), Expanded(child: ElevatedButton.icon(onPressed: () => widget.onSetupComplete("Global", _subjects), icon: const Icon(Icons.save), label: const Text('Save Global Subjects'))), ]),
-        )
+        Padding(padding: const EdgeInsets.all(8.0), child: Row(children: [ Expanded(child: OutlinedButton.icon(onPressed: _addSubject, icon: const Icon(Icons.add), label: const Text('Add Subject'))), const SizedBox(width: 12), Expanded(child: ElevatedButton.icon(onPressed: () => widget.onSetupComplete("Global", _subjects), icon: const Icon(Icons.save), label: const Text('Save Setup'))), ]))
       ],
     );
   }
