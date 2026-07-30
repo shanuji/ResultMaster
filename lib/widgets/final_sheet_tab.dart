@@ -56,14 +56,28 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
 
     for (int i = 0; i < _sortedStudents.length; i++) {
       var student = _sortedStudents[i];
-      double totalObtained = 0.0; double totalMax = 0.0; bool failed = false; 
+      double totalObtained = 0.0; double totalMax = 0.0; bool naturallyFailed = false; 
       
       List<DataCell> subjectCells = [];
       for (var sub in widget.subjects) {
         totalMax += sub.maxMarks; String displayMark = "-";
         if (student.isSubjectAttempted(widget.termId, sub)) {
           double score = student.getSubjectScore(widget.termId, sub); totalObtained += score;
-          if (sub.includeInPassFail && !student.isSubjectPassed(widget.termId, sub)) failed = true;
+          
+          // Check if they naturally failed without promotion
+          if (sub.includeInPassFail) {
+            bool passedNormally = false;
+            if (sub.components.isNotEmpty) {
+              passedNormally = true;
+              for (var c in sub.components) {
+                if (c.passingMarks > 0 && (double.tryParse(student.termMarks[widget.termId]?['${sub.name}_${c.name}'] ?? "") ?? 0.0) < c.passingMarks) passedNormally = false;
+              }
+            } else {
+              passedNormally = score >= sub.passingMarks;
+            }
+            if (!passedNormally) naturallyFailed = true;
+          }
+
           if (sub.components.isEmpty && (student.termMarks[widget.termId]?[sub.name] == "A" || student.termMarks[widget.termId]?[sub.name] == "AB")) {
             displayMark = student.termMarks[widget.termId]![sub.name]!; 
           } else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
@@ -79,7 +93,12 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
       if (_freezeName) fCells.add(cellName); else sCells.add(cellName);
 
       sCells.addAll(subjectCells); sCells.add(DataCell(Text(totalObtained.toStringAsFixed(1)))); sCells.add(DataCell(Text('${pct.toStringAsFixed(2)}%')));
-      sCells.add(DataCell(Text(failed ? 'FAIL' : 'PASS', style: TextStyle(color: failed ? Colors.red : Colors.green, fontWeight: FontWeight.bold))));
+      
+      // FIX 3: Detect if they had a promotion in this term
+      bool hasSubjectPromotion = student.termPromotions[widget.termId]?.values.contains(true) ?? false;
+      String statusText = hasSubjectPromotion ? 'PROMOTED' : (naturallyFailed ? 'FAIL' : 'PASS');
+      Color statusColor = hasSubjectPromotion ? Colors.orange : (naturallyFailed ? Colors.red : Colors.green);
+      sCells.add(DataCell(Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold))));
 
       Color rowColor = i.isEven ? Colors.grey[50]! : Colors.white;
       if (fixedCols.isNotEmpty) fixedRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: fCells));
@@ -108,15 +127,15 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
         ),
         Expanded(
           child: fixedCols.isEmpty ? 
-            SingleChildScrollView(scrollDirection: Axis.vertical, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(headingRowColor: MaterialStateProperty.all(Colors.blue[100]), sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows)))
+            SingleChildScrollView(scrollDirection: Axis.vertical, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue[100]), sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows)))
             : 
             SingleChildScrollView(
               scrollDirection: Axis.vertical,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  DataTable(headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: fixedSortIndex, sortAscending: _isAscending, columns: fixedCols, rows: fixedRows),
-                  Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows))),
+                  DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: fixedSortIndex, sortAscending: _isAscending, columns: fixedCols, rows: fixedRows),
+                  Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows))),
                 ],
               ),
             ),
