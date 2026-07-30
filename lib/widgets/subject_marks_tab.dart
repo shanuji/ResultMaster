@@ -67,7 +67,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
           child: SingleChildScrollView(
             scrollDirection: Axis.vertical, child: SingleChildScrollView(
               scrollDirection: Axis.horizontal, child: DataTable(
-                columnSpacing: 20, 
+                columnSpacing: 16, // Auto-fit
                 columns: gridColumns,
                 rows: widget.students.asMap().entries.map((entry) {
                   int sIdx = entry.key; var student = entry.value;
@@ -78,29 +78,14 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                   List<DataCell> rowCells = [DataCell(Text(student.rollNo)), DataCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name))];
                   
                   if (currentSub.components.isEmpty) {
-                    final fieldKey = '${student.rollNo}_${currentSub.name}';
-                    _inputKeysOrder.add(fieldKey);
-                    rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[currentSub.name] ?? "", focusNode: _getFocusNode(fieldKey), 
-                      onFocusLostOrSubmitted: (val) async { 
-                        final verified = _validateAndCleanInput(val, currentSub.maxMarks); 
-                        if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![currentSub.name] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: currentSub.name, value: verified); setState((){}); }
-                        else { _showValidationError(currentSub.maxMarks); _getFocusNode(fieldKey).requestFocus(); }
-                      }, 
-                      onNext: () { int idx = _inputKeysOrder.indexOf(fieldKey); if (idx != -1 && idx + 1 < _inputKeysOrder.length) FocusScope.of(context).requestFocus(_getFocusNode(_inputKeysOrder[idx + 1])); }))));
+                    final fieldKey = '${student.rollNo}_${currentSub.name}'; _inputKeysOrder.add(fieldKey);
+                    rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[currentSub.name] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (val) async { final verified = _validateAndCleanInput(val, currentSub.maxMarks); if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![currentSub.name] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: currentSub.name, value: verified); setState((){}); } else { _showValidationError(currentSub.maxMarks); _getFocusNode(fieldKey).requestFocus(); } }, onNext: () { int idx = _inputKeysOrder.indexOf(fieldKey); if (idx != -1 && idx + 1 < _inputKeysOrder.length) FocusScope.of(context).requestFocus(_getFocusNode(_inputKeysOrder[idx + 1])); }))));
                   } else {
                     for (var c in currentSub.components) {
-                      String markKey = '${currentSub.name}_${c.name}'; final fieldKey = '${student.rollNo}_$markKey';
-                      _inputKeysOrder.add(fieldKey);
-                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[markKey] ?? "", focusNode: _getFocusNode(fieldKey), 
-                        onFocusLostOrSubmitted: (val) async { 
-                          final verified = _validateAndCleanInput(val, c.maxMarks); 
-                          if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![markKey] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: markKey, value: verified); setState((){}); }
-                          else { _showValidationError(c.maxMarks); _getFocusNode(fieldKey).requestFocus(); }
-                        }, 
-                        onNext: () { int idx = _inputKeysOrder.indexOf(fieldKey); if (idx != -1 && idx + 1 < _inputKeysOrder.length) FocusScope.of(context).requestFocus(_getFocusNode(_inputKeysOrder[idx + 1])); }))));
+                      String markKey = '${currentSub.name}_${c.name}'; final fieldKey = '${student.rollNo}_$markKey'; _inputKeysOrder.add(fieldKey);
+                      rowCells.add(DataCell(Container(color: cellColor, child: MarkInputField(key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[markKey] ?? "", focusNode: _getFocusNode(fieldKey), onFocusLostOrSubmitted: (val) async { final verified = _validateAndCleanInput(val, c.maxMarks); if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![markKey] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: markKey, value: verified); setState((){}); } else { _showValidationError(c.maxMarks); _getFocusNode(fieldKey).requestFocus(); } }, onNext: () { int idx = _inputKeysOrder.indexOf(fieldKey); if (idx != -1 && idx + 1 < _inputKeysOrder.length) FocusScope.of(context).requestFocus(_getFocusNode(_inputKeysOrder[idx + 1])); }))));
                     }
                   }
-                  
                   rowCells.add(DataCell(IconButton(icon: Icon(isPromoted ? Icons.star : Icons.star_border, color: isPromoted ? Colors.amber : Colors.grey), onPressed: () async { bool newVal = !isPromoted; student.termPromotions[widget.termId] ??= {}; student.termPromotions[widget.termId]![currentSub.name] = newVal; await DatabaseHelper.instance.toggleSubjectPromotion(widget.termId, student.rollNo, currentSub.name, newVal); setState(() {}); })));
                   return DataRow(key: ValueKey(student.rollNo), color: MaterialStateProperty.all(sIdx.isEven ? Colors.grey[50] : Colors.white), cells: rowCells);
                 }).toList(),
