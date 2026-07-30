@@ -28,10 +28,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
   Future<void> _refreshWorkbooks() async {
     setState(() => _isLoading = true);
     final data = await DatabaseHelper.instance.fetchAllWorkbooks();
-    setState(() {
-      _workbooks = data;
-      _isLoading = false;
-    });
+    setState(() { _workbooks = data; _isLoading = false; });
   }
 
   Future<void> _exportBackup() async {
@@ -39,14 +36,10 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
       final dbPath = await getDatabasesPath();
       final path = p.join(dbPath, 'result_master.db');
       final file = File(path);
-      
       if (await file.exists()) {
         final bytes = await file.readAsBytes();
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').substring(0, 19);
-        await Share.shareXFiles(
-          [XFile.fromData(bytes, mimeType: 'application/octet-stream', name: 'ResultMaster_Backup_$timestamp.db')],
-          text: 'Here is my database backup from ResultMaster!',
-        );
+        await Share.shareXFiles([XFile.fromData(bytes, mimeType: 'application/octet-stream', name: 'ResultMaster_Backup_$timestamp.db')], text: 'Here is my database backup from ResultMaster!');
       } else {
         if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No database found to backup yet.')));
       }
@@ -73,8 +66,10 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
           )
         );
         if (confirm == true) {
-          // Note: ensure restoreDatabaseFile is implemented in DB helper or remove this block if not needed yet
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup Restored Successfully!')));
+          final dbPath = await getDatabasesPath();
+          final path = p.join(dbPath, 'result_master.db');
+          await backupFile.copy(path);
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup Restored Successfully!'), backgroundColor: Colors.green));
           _refreshWorkbooks();
         }
       }
@@ -89,11 +84,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Create New Workbook'),
-        content: TextField(
-          decoration: const InputDecoration(hintText: 'e.g., Class 3A - 2026', labelText: 'Workbook Title'),
-          autofocus: true,
-          onChanged: (val) => title = val,
-        ),
+        content: TextField(decoration: const InputDecoration(hintText: 'e.g., Class 3A - 2026', labelText: 'Workbook Title'), autofocus: true, onChanged: (val) => title = val),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
@@ -102,7 +93,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                 int id = await DatabaseHelper.instance.createWorkbook(title.trim());
                 if (mounted) Navigator.pop(context);
                 _refreshWorkbooks();
-                _openWorkbook(id, title.trim());
+                Navigator.push(context, MaterialPageRoute(builder: (context) => WorkbookDashboardScreen(workbookId: id, workbookTitle: title.trim()))).then((_) => _refreshWorkbooks());
               }
             },
             child: const Text('Create'),
@@ -110,10 +101,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
         ],
       ),
     );
-  }
-
-  void _openWorkbook(int id, String title) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => WorkbookDashboardScreen(workbookId: id, workbookTitle: title))).then((_) => _refreshWorkbooks());
   }
 
   void _deleteWorkbookConfirm(int id, String title) {
@@ -143,38 +130,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
         ),
         body: TabBarView(
           children: [
-            _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _workbooks.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.folder_open, size: 80, color: Colors.grey),
-                            const SizedBox(height: 16),
-                            const Text('No workbooks created yet.', style: TextStyle(fontSize: 16, color: Colors.grey)),
-                            const SizedBox(height: 24),
-                            ElevatedButton.icon(onPressed: _createNewWorkbookDialog, icon: const Icon(Icons.add), label: const Text('Create Workbook'))
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _workbooks.length,
-                        padding: const EdgeInsets.all(12),
-                        itemBuilder: (context, index) {
-                          final item = _workbooks[index];
-                          return Card(
-                            elevation: 2, margin: const EdgeInsets.symmetric(vertical: 8),
-                            child: ListTile(
-                              leading: const CircleAvatar(child: Icon(Icons.assignment)),
-                              title: Text(item['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text('Created: ${item['created_at'].toString().substring(0, 16).replaceAll('T', ' at ')}'),
-                              trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _deleteWorkbookConfirm(item['id'], item['title'])),
-                              onTap: () => _openWorkbook(item['id'], item['title']),
-                            ),
-                          );
-                        },
-                      ),
+            _isLoading ? const Center(child: CircularProgressIndicator()) : _workbooks.isEmpty ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.folder_open, size: 80, color: Colors.grey), const SizedBox(height: 16), const Text('No workbooks created yet.', style: TextStyle(fontSize: 16, color: Colors.grey)), const SizedBox(height: 24), ElevatedButton.icon(onPressed: _createNewWorkbookDialog, icon: const Icon(Icons.add), label: const Text('Create Workbook'))])) : ListView.builder(itemCount: _workbooks.length, padding: const EdgeInsets.all(12), itemBuilder: (context, index) { final item = _workbooks[index]; return Card(elevation: 2, margin: const EdgeInsets.symmetric(vertical: 8), child: ListTile(leading: const CircleAvatar(child: Icon(Icons.assignment)), title: Text(item['title'], style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text('Created: ${item['created_at'].toString().substring(0, 16).replaceAll('T', ' at ')}'), trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _deleteWorkbookConfirm(item['id'], item['title'])), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => WorkbookDashboardScreen(workbookId: item['id'], workbookTitle: item['title']))).then((_) => _refreshWorkbooks()))); }),
             Padding(
               padding: const EdgeInsets.all(24.0),
               child: Column(
@@ -184,7 +140,9 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                   const SizedBox(height: 24),
                   const Text('Secure Your Data', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                   const SizedBox(height: 40),
-                  ElevatedButton.icon(style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)), icon: const Icon(Icons.upload_file), label: const Text('Export Database Backup'), onPressed: _exportBackup),
+                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[50], padding: const EdgeInsets.symmetric(vertical: 16)), icon: const Icon(Icons.upload_file), label: const Text('Export Database Backup'), onPressed: _exportBackup),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[50], padding: const EdgeInsets.symmetric(vertical: 16)), icon: const Icon(Icons.settings_backup_restore, color: Colors.deepOrange), label: const Text('Restore from Backup File', style: TextStyle(color: Colors.deepOrange)), onPressed: _importBackup),
                 ],
               ),
             )
