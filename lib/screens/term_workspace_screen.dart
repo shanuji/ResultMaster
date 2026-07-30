@@ -25,14 +25,9 @@ class _TermWorkspaceScreenState extends State<TermWorkspaceScreen> {
             WavyHeader(
               title: '${widget.term.name} Workspace',
               leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
-              actions: [IconButton(icon: const Icon(Icons.more_vert), onPressed: (){})],
             ),
             TabBar(
-              labelColor: Theme.of(context).colorScheme.primary,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Theme.of(context).colorScheme.primary,
-              indicatorWeight: 3,
-              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              labelColor: Theme.of(context).colorScheme.primary, unselectedLabelColor: Colors.grey, indicatorColor: Theme.of(context).colorScheme.primary, indicatorWeight: 3, labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               tabs: [
                 const Tab(icon: Icon(Icons.edit_note), text: "Subject Marks"), 
                 Tab(icon: const Icon(Icons.assignment_turned_in), text: "${widget.term.name} Final"), 
