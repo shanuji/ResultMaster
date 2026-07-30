@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import '../models/data_models.dart';
 import '../database/database_helper.dart';
 import '../utils/ux_helpers.dart';
+import '../widgets/wavy_header.dart';
 import 'term_workspace_screen.dart';
 import '../widgets/setup_wizard_widget.dart';
 import '../widgets/global_final_result_tab.dart';
@@ -35,140 +36,109 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
     setState(() { _terms = data['terms']; _students = data['students']; _subjects = data['subjects']; _isLoading = false; });
   }
 
-  Future<void> _importExcel() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx'], withData: true);
-      if (result != null && result.files.single.bytes != null) {
-        var excel = ex.Excel.decodeBytes(result.files.single.bytes!);
-        for (var table in excel.tables.keys) {
-          for (var row in excel.tables[table]!.rows) {
-            if (row.length >= 2) {
-              String roll = row[0]?.value?.toString().trim() ?? '';
-              String name = row[1]?.value?.toString().trim() ?? '';
-              if (roll.isNotEmpty && roll.toLowerCase() != 'roll no') {
-                await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, roll, name);
-              }
-            }
-          }
-          break; // Stop after first sheet
-        }
-        _loadData();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Students imported successfully!'), backgroundColor: Colors.green));
-      }
-    } catch(e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error reading Excel: $e'), backgroundColor: Colors.red));
-    }
-  }
-
-  void _showAddTermDialog() {
-    String termName = "";
-    showDialog(
-      context: context, builder: (context) => AlertDialog(
-        title: const Text('Add New Term'),
-        content: TextField(decoration: const InputDecoration(labelText: 'Term Name (e.g. Term 1)'), autofocus: true, onChanged: (val) => termName = val),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (termName.trim().isEmpty) return;
-              if (_terms.any((t) => t.name.trim().toLowerCase() == termName.trim().toLowerCase())) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A term with this name already exists!'), backgroundColor: Colors.red)); return; }
-              await DatabaseHelper.instance.createTerm(widget.workbookId, termName.trim());
-              if (context.mounted) Navigator.pop(context);
-              _loadData();
-            }, child: const Text('Add Term')
-          )
-        ],
-      )
-    );
-  }
-
-  void _deleteConfirmation(String itemType, String itemName, VoidCallback onDelete) {
-    showDialog(context: context, builder: (context) => AlertDialog(title: Text('Delete $itemType?'), content: Text('Are you sure you want to permanently delete "$itemName"?'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Navigator.pop(context); onDelete(); }, child: const Text('Delete', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))) ]));
-  }
+  // ... (Keep _importExcel, _showAddTermDialog, and _deleteConfirmation exactly the same) ...
+  Future<void> _importExcel() async { try { FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx'], withData: true); if (result != null && result.files.single.bytes != null) { var excel = ex.Excel.decodeBytes(result.files.single.bytes!); for (var table in excel.tables.keys) { for (var row in excel.tables[table]!.rows) { if (row.length >= 2) { String roll = row[0]?.value?.toString().trim() ?? ''; String name = row[1]?.value?.toString().trim() ?? ''; if (roll.isNotEmpty && roll.toLowerCase() != 'roll no') { await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, roll, name); } } } break; } _loadData(); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Students imported successfully!'), backgroundColor: Colors.green)); } } catch(e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error reading Excel: $e'), backgroundColor: Colors.red)); } }
+  void _showAddTermDialog() { String termName = ""; showDialog( context: context, builder: (context) => AlertDialog( title: const Text('Add New Term'), content: TextField(decoration: const InputDecoration(labelText: 'Term Name (e.g. Term 1)'), autofocus: true, onChanged: (val) => termName = val), actions: [ TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), ElevatedButton( onPressed: () async { if (termName.trim().isEmpty) return; if (_terms.any((t) => t.name.trim().toLowerCase() == termName.trim().toLowerCase())) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A term with this name already exists!'), backgroundColor: Colors.red)); return; } await DatabaseHelper.instance.createTerm(widget.workbookId, termName.trim()); if (context.mounted) Navigator.pop(context); _loadData(); }, child: const Text('Add Term') ) ], ) ); }
+  void _deleteConfirmation(String itemType, String itemName, VoidCallback onDelete) { showDialog(context: context, builder: (context) => AlertDialog(title: Text('Delete $itemType?'), content: Text('Are you sure you want to permanently delete "$itemName"?'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Navigator.pop(context); onDelete(); }, child: const Text('Delete', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))) ])); }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.workbookTitle, style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          bottom: const TabBar(tabs: [Tab(icon: Icon(Icons.dashboard), text: "Dashboard"), Tab(icon: Icon(Icons.settings), text: "Global Subjects"), Tab(icon: Icon(Icons.analytics), text: "Global Final Result")]),
-        ),
-        body: TabBarView(
-          physics: const NeverScrollableScrollPhysics(),
+        body: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            WavyHeader(
+              title: widget.workbookTitle,
+              leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
+              actions: [IconButton(icon: const Icon(Icons.notifications_none), onPressed: (){})],
+            ),
+            TabBar(
+              labelColor: Theme.of(context).colorScheme.primary,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              indicatorWeight: 3,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              tabs: const [Tab(icon: Icon(Icons.home), text: "Dashboard"), Tab(icon: Icon(Icons.menu_book), text: "Global Subjects"), Tab(icon: Icon(Icons.bar_chart), text: "Global Final Results")],
+            ),
+            Expanded(
+              child: TabBarView(
+                physics: const NeverScrollableScrollPhysics(),
                 children: [
-                  Expanded(
-                    flex: 1, 
-                    child: Card(
-                      elevation: 2, clipBehavior: Clip.antiAlias, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Column(
-                        children: [
-                          Container(padding: const EdgeInsets.all(16), color: Colors.blue.shade50, width: double.infinity, child: const Text('TERMS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
-                          Expanded(
-                            child: ListView.builder(
-                              itemCount: _terms.length, itemBuilder: (context, index) {
-                                return ListTile(
-                                  leading: const Icon(Icons.folder, color: Colors.blue), title: Text(_terms[index].name, style: const TextStyle(fontWeight: FontWeight.bold)), 
-                                  trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20), onPressed: () => _deleteConfirmation("Term", _terms[index].name, () async { await DatabaseHelper.instance.deleteTerm(_terms[index].id); _loadData(); })),
-                                  onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (context) => TermWorkspaceScreen(term: _terms[index], subjects: _subjects, allStudents: _students))); _loadData(); },
-                                );
-                              }
-                            ),
+                  // TAB 1: DASHBOARD (Matching Screenshot 6)
+                  SingleChildScrollView(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        // Top Summary Cards
+                        Row(
+                          children: [
+                            Expanded(child: Card(color: const Color(0xFFFFF8E1), elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), child: Padding(padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12), child: Row(children: [const Icon(Icons.people, color: Colors.orangeAccent, size: 36), const SizedBox(width: 12), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Total Students", style: TextStyle(color: Colors.grey, fontSize: 12)), Text("${_students.length}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24))])])))),
+                            const SizedBox(width: 12),
+                            Expanded(child: Card(color: const Color(0xFFE3F2FD), elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), child: Padding(padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12), child: Row(children: [const Icon(Icons.folder, color: Colors.blueAccent, size: 36), const SizedBox(width: 12), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text("Total Terms", style: TextStyle(color: Colors.grey, fontSize: 12)), Text("${_terms.length}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24))])])))),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        // Terms Section
+                        Card(
+                          elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          child: Column(
+                            children: [
+                              Padding(padding: const EdgeInsets.all(16), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("TERMS", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00897B), fontSize: 16)), TextButton.icon(onPressed: _showAddTermDialog, icon: const Icon(Icons.add), label: const Text("Add Term"))])),
+                              const Divider(height: 1),
+                              ListView.separated(
+                                shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _terms.length, separatorBuilder: (c, i) => const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  return ListTile(
+                                    leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: index.isEven ? Colors.green.shade100 : Colors.orange.shade100, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.folder, color: index.isEven ? Colors.green : Colors.orange)),
+                                    title: Text(_terms[index].name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    trailing: Container(decoration: BoxDecoration(border: Border.all(color: Colors.red.shade100), borderRadius: BorderRadius.circular(8)), child: IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18), onPressed: () => _deleteConfirmation("Term", _terms[index].name, () async { await DatabaseHelper.instance.deleteTerm(_terms[index].id); _loadData(); }))),
+                                    onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (context) => TermWorkspaceScreen(term: _terms[index], subjects: _subjects, allStudents: _students))); _loadData(); },
+                                  );
+                                }
+                              )
+                            ],
                           ),
-                          Padding(padding: const EdgeInsets.all(8.0), child: ElevatedButton.icon(onPressed: _showAddTermDialog, icon: const Icon(Icons.add), label: const Text("Add Term"), style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45)))),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Student List Section
+                        Card(
+                          elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          child: Column(
+                            children: [
+                              Padding(padding: const EdgeInsets.all(16), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("STUDENT LIST", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00897B), fontSize: 16)), Row(children: [IconButton(icon: const Icon(Icons.upload_file, color: Colors.green), onPressed: _importExcel, tooltip: "Upload Excel"), TextButton.icon(onPressed: () async { int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++; await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), ""); _loadData(); }, icon: const Icon(Icons.add), label: const Text("Add Student"))])])),
+                              const Divider(height: 1),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: DataTable(
+                                  columnSpacing: 24, headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+                                  columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Action'))],
+                                  rows: _students.asMap().entries.map((e) => DataRow(color: MaterialStateProperty.all(e.key.isEven ? Colors.grey[50] : Colors.white), cells: [
+                                    DataCell(AutoSelectTextField(initialValue: e.value.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; })),
+                                    DataCell(AutoSelectTextField(initialValue: e.value.name, decoration: InputDecoration(hintText: 'Student ${e.value.rollNo}', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; })),
+                                    DataCell(Container(decoration: BoxDecoration(border: Border.all(color: Colors.red.shade100), borderRadius: BorderRadius.circular(8)), child: IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18), onPressed: () => _deleteConfirmation("Student", e.value.name.isEmpty ? 'Student ${e.value.rollNo}' : e.value.name, () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, e.value.rollNo); _loadData(); })))),
+                                  ])).toList(),
+                                ),
+                              )
+                            ],
+                          ),
+                        )
+                      ],
                     ),
                   ),
-                  Expanded(
-                    flex: 2, 
-                    child: Card(
-                      elevation: 2, clipBehavior: Clip.antiAlias, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Column(
-                        children: [
-                          // FIX: Wrapped title in Expanded to prevent right overflow banner
-                          Container(padding: const EdgeInsets.all(16), color: Colors.yellow.shade50, width: double.infinity, child: Row(children: [const Expanded(child: Text('STUDENT LIST', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))), Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)), child: Text('Total: ${_students.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))] )),
-                          Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Row(children: [
-                              ElevatedButton.icon(onPressed: () async {
-                                int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++;
-                                await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), ""); _loadData();
-                              }, icon: const Icon(Icons.person_add, size: 18), label: const Text('Add Student')),
-                              const SizedBox(width: 8),
-                              ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade50), onPressed: _importExcel, icon: const Icon(Icons.file_upload, size: 18, color: Colors.green), label: const Text('Upload Excel', style: TextStyle(color: Colors.green))),
-                            ]),
-                          ),
-                          Expanded(
-                            child: SingleChildScrollView(scrollDirection: Axis.vertical, child: DataTable(
-                              columnSpacing: 16, // Auto-fit fix
-                              columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Action'))],
-                              rows: _students.asMap().entries.map((e) => DataRow(color: MaterialStateProperty.all(e.key.isEven ? Colors.grey[50] : Colors.white), cells: [
-                                DataCell(AutoSelectTextField(initialValue: e.value.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; })),
-                                DataCell(AutoSelectTextField(initialValue: e.value.name, decoration: InputDecoration(hintText: 'Student ${e.value.rollNo}', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; })),
-                                DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteConfirmation("Student", e.value.name.isEmpty ? 'Student ${e.value.rollNo}' : e.value.name, () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, e.value.rollNo); _loadData(); }))),
-                              ])).toList(),
-                            ))
-                          )
-                        ],
-                      )
-                    )
-                  )
+                  
+                  // TAB 2 & 3
+                  SetupWizardWidget(
+                    palette: const [Color(0xFF00897B), Colors.purple, Colors.teal, Colors.indigo, Colors.pink, Colors.orange], initialSubjects: _subjects,
+                    onSetupComplete: (_, subjects) async { await DatabaseHelper.instance.updateWorkbookSubjects(widget.workbookId, subjects); _loadData(); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Global Subjects Saved Successfully!'), backgroundColor: Colors.green)); },
+                  ),
+                  GlobalFinalResultTabWidget(workbookId: widget.workbookId, terms: _terms, subjects: _subjects, students: _students),
                 ],
               ),
             ),
-            SetupWizardWidget(
-              palette: const [Colors.blue, Colors.purple, Colors.teal, Colors.indigo, Colors.pink, Colors.orange], initialSubjects: _subjects,
-              onSetupComplete: (_, subjects) async { await DatabaseHelper.instance.updateWorkbookSubjects(widget.workbookId, subjects); _loadData(); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Global Subjects Saved Successfully!'), backgroundColor: Colors.green)); },
-            ),
-            GlobalFinalResultTabWidget(workbookId: widget.workbookId, terms: _terms, subjects: _subjects, students: _students),
           ],
         ),
       ),
