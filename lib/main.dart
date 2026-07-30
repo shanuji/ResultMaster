@@ -13,10 +13,12 @@ class ResultMasterApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ResultMaster',
-      debugShowCheckedModeBanner: false, // <-- FIX 1: This removes the "Debug" banner in the top right corner
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        // The new beautiful Teal color scheme
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00897B), primary: const Color(0xFF00897B)),
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF8F9FA), // Slightly off-white for contrast with white cards
       ),
       home: const MasterDashboardHome(),
     );
