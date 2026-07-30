@@ -15,10 +15,19 @@ class GlobalFinalResultTabWidget extends StatefulWidget {
 class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget> {
   bool _freezeRollNo = true; 
   bool _freezeName = true; 
+  String _searchQuery = "";
+
+  // Helper for generating dynamic light pastel colors
+  Color _getPastelColor(int index) {
+    List<Color> bases = [Colors.blue, Colors.purple, Colors.teal, Colors.orange, Colors.pink, Colors.indigo];
+    return bases[index % bases.length];
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.terms.isEmpty || widget.subjects.isEmpty) { return const Center(child: Text('Create Terms and Global Subjects first.', style: TextStyle(color: Colors.grey))); }
+    if (widget.terms.isEmpty || widget.subjects.isEmpty) { return const Center(child: Text('Create Terms and Subjects first.', style: TextStyle(color: Colors.grey))); }
+
+    List<StudentRow> filteredStudents = _searchQuery.isEmpty ? widget.students : widget.students.where((s) => s.name.toLowerCase().contains(_searchQuery.toLowerCase()) || s.rollNo.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
     List<DataColumn> fixedCols = []; List<DataColumn> scrollCols = [];
     var colRoll = const DataColumn(label: Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold)));
@@ -48,8 +57,9 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
 
     List<DataRow> fixedRows = []; List<DataRow> scrollRows = [];
 
-    for (int i = 0; i < widget.students.length; i++) {
-      var student = widget.students[i];
+    for (int i = 0; i < filteredStudents.length; i++) {
+      var student = filteredStudents[i];
+      Color rowColor = i.isEven ? Colors.grey.shade200 : Colors.white; // FIX: Darker shade for alternating rows
       
       var cellRoll = DataCell(Text(student.rollNo)); 
       var cellName = DataCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name));
@@ -61,20 +71,22 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
       double studentGrandTotal = 0.0;
       bool naturallyFailed = false;
 
-      for (var sub in widget.subjects) {
+      for (int subIdx = 0; subIdx < widget.subjects.length; subIdx++) {
+        var sub = widget.subjects[subIdx];
+        Color subColor = _getPastelColor(subIdx);
+        Color cellBg = subColor.withOpacity(0.05);
+        Color totalBg = subColor.withOpacity(0.20);
+
         if (sub.components.isEmpty) {
           double subjectTotal = 0.0;
           for (var term in widget.terms) {
             double s = student.getSubjectScore(term.id, sub);
             subjectTotal += s;
-            sCells.add(DataCell(Center(child: Text(student.termMarks[term.id]?[sub.name] ?? "-"))));
-            if (sub.includeInPassFail) {
-              bool passedNormally = s >= sub.passingMarks;
-              if (!passedNormally && student.isSubjectAttempted(term.id, sub)) naturallyFailed = true;
-            }
+            sCells.add(DataCell(Container(color: cellBg, alignment: Alignment.center, child: Text(student.termMarks[term.id]?[sub.name] ?? "-"))));
+            if (sub.includeInPassFail) { bool passedNormally = s >= sub.passingMarks; if (!passedNormally && student.isSubjectAttempted(term.id, sub)) naturallyFailed = true; }
           }
           studentGrandTotal += subjectTotal;
-          sCells.add(DataCell(Container(padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), color: Colors.grey.shade300, alignment: Alignment.center, child: Text(subjectTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
+          sCells.add(DataCell(Container(padding: const EdgeInsets.symmetric(horizontal: 8), color: totalBg, alignment: Alignment.center, child: Text(subjectTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
         } else {
           for (var comp in sub.components) {
             double compTotal = 0.0;
@@ -82,16 +94,12 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
               String markKey = '${sub.name}_${comp.name}';
               double s = double.tryParse(student.termMarks[term.id]?[markKey] ?? "") ?? 0.0;
               compTotal += s;
-              sCells.add(DataCell(Center(child: Text(student.termMarks[term.id]?[markKey] ?? "-"))));
+              sCells.add(DataCell(Container(color: cellBg, alignment: Alignment.center, child: Text(student.termMarks[term.id]?[markKey] ?? "-"))));
             }
             studentGrandTotal += compTotal;
-            sCells.add(DataCell(Container(padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), color: Colors.grey.shade300, alignment: Alignment.center, child: Text(compTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
+            sCells.add(DataCell(Container(padding: const EdgeInsets.symmetric(horizontal: 8), color: totalBg, alignment: Alignment.center, child: Text(compTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
           }
-          for (var term in widget.terms) {
-            if (sub.includeInPassFail && student.isSubjectAttempted(term.id, sub)) {
-              for (var c in sub.components) { if (c.passingMarks > 0 && (double.tryParse(student.termMarks[term.id]?['${sub.name}_${c.name}'] ?? "") ?? 0.0) < c.passingMarks) naturallyFailed = true; }
-            }
-          }
+          for (var term in widget.terms) { if (sub.includeInPassFail && student.isSubjectAttempted(term.id, sub)) { for (var c in sub.components) { if (c.passingMarks > 0 && (double.tryParse(student.termMarks[term.id]?['${sub.name}_${c.name}'] ?? "") ?? 0.0) < c.passingMarks) naturallyFailed = true; } } }
         }
       }
 
@@ -101,16 +109,13 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
       
       bool hasAnySubjectPromotion = false;
       for (var t in widget.terms) { if (student.termPromotions[t.id]?.values.contains(true) == true) hasAnySubjectPromotion = true; }
-      
       bool isPromoted = student.isPromotedOverall || hasAnySubjectPromotion;
       String statusText = isPromoted ? 'PROMOTED' : (naturallyFailed ? 'FAIL' : 'PASS');
       Color statusColor = isPromoted ? Colors.orange : (naturallyFailed ? Colors.red : Colors.green);
 
       sCells.add(DataCell(Center(child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)))));
-      // FIX APPLIED HERE: Corrected the closing brackets for the Switch widget
       sCells.add(DataCell(Center(child: Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); }))));
 
-      Color rowColor = i.isEven ? Colors.grey[50]! : Colors.white;
       if (fixedCols.isNotEmpty) fixedRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: fCells));
       scrollRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: sCells));
     }
@@ -118,12 +123,14 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
     return Column(
       children: [
         Container(
-          color: Colors.blue.shade50, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          color: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              const Icon(Icons.push_pin, size: 16, color: Colors.blue), const SizedBox(width: 6), const Text("Freeze Columns:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
-              const Spacer(), const Text("Roll No", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeRollNo = val)),
-              const SizedBox(width: 16), const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeName, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeName = val)),
+              Expanded(flex: 1, child: SizedBox(height: 35, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: EdgeInsets.zero, border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
+              const Spacer(),
+              const Icon(Icons.push_pin, size: 16, color: Colors.blue), const SizedBox(width: 6), const Text("Freeze:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
+              const SizedBox(width: 8), const Text("Roll", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeRollNo = val)),
+              const SizedBox(width: 8), const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeName, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeName = val)),
             ],
           ),
         ),
