@@ -74,7 +74,6 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
             }
           }
           studentGrandTotal += subjectTotal;
-          // FIX 5: Fully grey background inside cell 
           sCells.add(DataCell(Container(padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), color: Colors.grey.shade300, alignment: Alignment.center, child: Text(subjectTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
         } else {
           for (var comp in sub.components) {
@@ -108,7 +107,8 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
       Color statusColor = isPromoted ? Colors.orange : (naturallyFailed ? Colors.red : Colors.green);
 
       sCells.add(DataCell(Center(child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)))));
-      sCells.add(DataCell(Center(child: Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); })))));
+      // FIX APPLIED HERE: Corrected the closing brackets for the Switch widget
+      sCells.add(DataCell(Center(child: Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); }))));
 
       Color rowColor = i.isEven ? Colors.grey[50]! : Colors.white;
       if (fixedCols.isNotEmpty) fixedRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: fCells));
