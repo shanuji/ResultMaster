@@ -63,7 +63,6 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
         totalMax += sub.maxMarks; String displayMark = "-";
         if (student.isSubjectAttempted(widget.termId, sub)) {
           double score = student.getSubjectScore(widget.termId, sub); totalObtained += score;
-          
           if (sub.includeInPassFail) {
             bool passedNormally = false;
             if (sub.components.isNotEmpty) {
@@ -72,20 +71,19 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
             } else { passedNormally = score >= sub.passingMarks; }
             if (!passedNormally) naturallyFailed = true;
           }
-
           if (sub.components.isEmpty && (student.termMarks[widget.termId]?[sub.name] == "A" || student.termMarks[widget.termId]?[sub.name] == "AB")) { displayMark = student.termMarks[widget.termId]![sub.name]!; } 
           else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
         }
-        // Colors failing marks red
         bool isFailMark = displayMark != "-" && displayMark != "A" && displayMark != "AB" && double.parse(displayMark) < sub.passingMarks;
         subjectCells.add(DataCell(Center(child: Text(displayMark, style: TextStyle(color: isFailMark ? Colors.red : Colors.black87, fontWeight: isFailMark ? FontWeight.bold : FontWeight.normal)))));
       }
       
       double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
       
-      // FIXED: Avatar style Roll No
-      var cellRoll = DataCell(Container(width: 32, height: 32, decoration: BoxDecoration(color: const Color(0xFFE0F2F1), shape: BoxShape.circle), alignment: Alignment.center, child: Text(student.rollNo, style: const TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)))); 
-      var cellName = DataCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name));
+      var cellRoll = DataCell(Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0xFFE0F2F1), shape: BoxShape.circle), alignment: Alignment.center, child: Text(student.rollNo, style: const TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)))); 
+      
+      // FIX: Force max lines and wrap text inside a fixed-width container to prevent 90-pixel overflow!
+      var cellName = DataCell(SizedBox(width: 120, child: Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis)));
 
       List<DataCell> fCells = []; List<DataCell> sCells = [];
       if (_freezeRollNo) fCells.add(cellRoll); else sCells.add(cellRoll);
