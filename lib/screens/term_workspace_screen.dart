@@ -18,7 +18,7 @@ class _TermWorkspaceScreenState extends State<TermWorkspaceScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         body: Column(
           children: [
@@ -30,8 +30,9 @@ class _TermWorkspaceScreenState extends State<TermWorkspaceScreen> {
             TabBar(
               labelColor: Theme.of(context).colorScheme.primary, unselectedLabelColor: Colors.grey, indicatorColor: Theme.of(context).colorScheme.primary, indicatorWeight: 3, labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               tabs: [
-                const Tab(icon: Icon(Icons.edit_note), text: "Subject Marks"), 
-                Tab(icon: const Icon(Icons.assignment_turned_in), text: "${widget.term.name} Final"), 
+                const Tab(icon: Icon(Icons.edit_note), text: "Subject Marks"),
+                const Tab(icon: Icon(Icons.people), text: "Students"),
+                Tab(icon: const Icon(Icons.assignment_turned_in), text: "${widget.term.name} Final"),
                 Tab(icon: const Icon(Icons.analytics), text: "${widget.term.name} Summary")
               ],
             ),
@@ -39,7 +40,8 @@ class _TermWorkspaceScreenState extends State<TermWorkspaceScreen> {
               child: TabBarView(
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
-                  SubjectMarksTabWidget(termId: widget.term.id, subjects: widget.subjects, students: widget.allStudents),
+                  SubjectMarksTabWidget(termId: widget.term.id, subjects: widget.subjects, students: widget.allStudents, showEntryTable: false),
+                  SubjectMarksTabWidget(termId: widget.term.id, subjects: widget.subjects, students: widget.allStudents, showSearch: true),
                   FinalSheetTabWidget(termId: widget.term.id, subjects: widget.subjects, students: widget.allStudents),
                   SummarySheetTabWidget(termId: widget.term.id, subjects: widget.subjects, students: widget.allStudents),
                 ],
