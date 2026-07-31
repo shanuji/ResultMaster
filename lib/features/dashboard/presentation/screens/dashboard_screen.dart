@@ -85,7 +85,7 @@ class _DashboardHero extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'Create Excel-like sheets, add subjects as tabs, and keep school data on this Android device.',
-            style: textTheme.bodyLarge?.copyWith(color: Colors.white.withValues(alpha: 0.9)),
+            style: textTheme.bodyLarge?.copyWith(color: Colors.white.withOpacity(0.9)),
           ),
           const SizedBox(height: 20),
           FilledButton.icon(

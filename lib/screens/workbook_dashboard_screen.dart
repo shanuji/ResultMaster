@@ -297,14 +297,14 @@ class _StudentsPanel extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   child: SingleChildScrollView(
                     child: DataTable(
-                      headingRowColor: WidgetStatePropertyAll(Theme.of(context).colorScheme.primary.withOpacity(.10)),
+                      headingRowColor: MaterialStatePropertyAll(Theme.of(context).colorScheme.primary.withOpacity(.10)),
                       dataRowMinHeight: 58,
                       dataRowMaxHeight: 68,
                       columnSpacing: 24,
                       columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Action'))],
                       rows: filteredStudents.asMap().entries.map((e) {
                         final student = e.value;
-                        return DataRow(color: WidgetStatePropertyAll(e.key.isEven ? Colors.white : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(.35)), cells: [
+                        return DataRow(color: MaterialStatePropertyAll(e.key.isEven ? Colors.white : const Color(0xFFF3F6F4).withOpacity(.35)), cells: [
                           DataCell(AutoSelectTextField(initialValue: student.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none, filled: false), onChanged: (val) => onUpdateStudent(student, val, student.name))),
                           DataCell(AutoSelectTextField(initialValue: student.name, decoration: InputDecoration(hintText: 'Student ${student.rollNo}', border: InputBorder.none, filled: false), onChanged: (val) => onUpdateStudent(student, student.rollNo, val))),
                           DataCell(IconButton(icon: const Icon(Icons.delete_outline_rounded), color: Theme.of(context).colorScheme.error, onPressed: () => onDeleteStudent(student))),

@@ -50,13 +50,13 @@ class ResultMasterTheme {
       scaffoldBackgroundColor: isLight ? surface : const Color(0xFF071513),
       fontFamily: 'Roboto',
       appBarTheme: const AppBarTheme(elevation: 0, centerTitle: false, backgroundColor: Colors.transparent, foregroundColor: Colors.white),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         elevation: 0,
         color: isLight ? card : const Color(0xFF102522),
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: scheme.primary.withOpacity(.08))),
       ),
-      dialogTheme: DialogThemeData(
+      dialogTheme: DialogTheme(
         backgroundColor: scheme.surface,
         surfaceTintColor: scheme.primary.withOpacity(.08),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
@@ -66,7 +66,7 @@ class ResultMasterTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         contentTextStyle: const TextStyle(fontWeight: FontWeight.w700),
       ),
-      tabBarTheme: TabBarThemeData(
+      tabBarTheme: TabBarTheme(
         labelColor: scheme.primary,
         unselectedLabelColor: scheme.onSurfaceVariant,
         indicatorColor: scheme.primary,

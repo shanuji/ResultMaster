@@ -14,7 +14,6 @@ class AppTheme {
       primary: _excelGreen,
       secondary: _excelDarkGreen,
       surface: Colors.white,
-      surfaceContainerHighest: _sheetBackground,
     );
 
     return ThemeData(
@@ -27,7 +26,7 @@ class AppTheme {
         backgroundColor: _excelGreen,
         foregroundColor: Colors.white,
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: Colors.white,
         elevation: 0,
         margin: EdgeInsets.zero,
@@ -38,12 +37,12 @@ class AppTheme {
       ),
       dividerTheme: const DividerThemeData(color: _gridLine, thickness: 1),
       navigationBarTheme: NavigationBarThemeData(
-        indicatorColor: _excelGreen.withValues(alpha: 0.14),
-        labelTextStyle: WidgetStateProperty.all(
+        indicatorColor: _excelGreen.withOpacity(0.14),
+        labelTextStyle: MaterialStateProperty.all(
           const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      tabBarTheme: const TabBarThemeData(
+      tabBarTheme: const TabBarTheme(
         labelColor: _excelGreen,
         unselectedLabelColor: Color(0xFF5F6F67),
         indicatorColor: _excelGreen,
