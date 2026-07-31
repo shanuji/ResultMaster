@@ -109,10 +109,9 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                         const SizedBox(height: 24),
                         const Text('Secure Your Data', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                         const SizedBox(height: 40),
-                        // FIXED: Adjusted foreground color to make text readable
-                        ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[50], foregroundColor: Colors.blue[900], padding: const EdgeInsets.symmetric(vertical: 16)), icon: const Icon(Icons.upload_file), label: const Text('Export Database Backup', style: TextStyle(fontWeight: FontWeight.bold)), onPressed: _exportBackup),
+                        ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)), icon: const Icon(Icons.upload_file), label: const Text('Export Database Backup', style: TextStyle(fontWeight: FontWeight.bold)), onPressed: _exportBackup),
                         const SizedBox(height: 20),
-                        ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[50], foregroundColor: Colors.deepOrange[900], padding: const EdgeInsets.symmetric(vertical: 16)), icon: const Icon(Icons.settings_backup_restore), label: const Text('Restore from Backup File', style: TextStyle(fontWeight: FontWeight.bold)), onPressed: _importBackup),
+                        ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)), icon: const Icon(Icons.settings_backup_restore), label: const Text('Restore from Backup File', style: TextStyle(fontWeight: FontWeight.bold)), onPressed: _importBackup),
                       ],
                     ),
                   ),
