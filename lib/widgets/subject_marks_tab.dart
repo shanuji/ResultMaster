@@ -29,19 +29,17 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
 
   void _showValidationError(double maxAllowed) { ScaffoldMessenger.of(context).clearSnackBars(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: Marks cannot exceed $maxAllowed', style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.red)); }
 
+  // FIX: Compressed block size, slightly increased font
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4), padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))),
+        margin: const EdgeInsets.symmetric(horizontal: 4), padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.3))),
         child: Column(children: [ 
-          Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color, shape: BoxShape.circle), child: Icon(icon, color: Colors.white, size: 16)), 
-          const SizedBox(height: 6), 
-          // FIX: Increased font size to 13
-          Text(title, style: TextStyle(fontSize: 13, color: Colors.grey.shade800, fontWeight: FontWeight.bold), textAlign: TextAlign.center), 
-          const SizedBox(height: 2), 
-          // FIX: Increased font size to 18
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), 
+          Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: color, shape: BoxShape.circle), child: Icon(icon, color: Colors.white, size: 14)), 
+          const SizedBox(height: 4), 
+          Text(title, style: TextStyle(fontSize: 12, color: Colors.grey.shade800, fontWeight: FontWeight.bold), textAlign: TextAlign.center), 
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), 
         ]),
       ),
     );
@@ -99,7 +97,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0), 
-            child: Row(children: [_buildStatCard("Passed", passedCount.toString(), Icons.check, Colors.green), _buildStatCard("Failed", failedCount.toString(), Icons.close, Colors.redAccent), _buildStatCard("QI", qi.toStringAsFixed(2), Icons.bar_chart, Colors.blue), _buildStatCard("Distt", disttCount.toString(), Icons.pie_chart, Colors.purple)]) // FIX: Removed (Avg) from QI
+            child: Row(children: [_buildStatCard("Passed", passedCount.toString(), Icons.check, Colors.green), _buildStatCard("Failed", failedCount.toString(), Icons.close, Colors.redAccent), _buildStatCard("QI", qi.toStringAsFixed(2), Icons.bar_chart, Colors.blue), _buildStatCard("Distt", disttCount.toString(), Icons.pie_chart, Colors.purple)])
           ),
           Padding(
             padding: const EdgeInsets.all(12.0), 
@@ -107,7 +105,6 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
               children: [
                 Expanded(child: SizedBox(height: 35, child: TextField(decoration: InputDecoration(hintText: 'Search Student...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: EdgeInsets.zero, border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
                 const SizedBox(width: 8),
-                // FIX: Added Save button
                 ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade50, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12)), onPressed: () { FocusScope.of(context).unfocus(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marks Saved!'), backgroundColor: Colors.green)); }, icon: const Icon(Icons.save, size: 16, color: Colors.blue), label: const Text('Save', style: TextStyle(color: Colors.blue))),
               ],
             )
@@ -121,24 +118,18 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                 int sIdx = entry.key; var student = entry.value;
                 bool isPromoted = student.termPromotions[widget.termId]?[currentSub.name] == true;
                 
-                // FIX: Wrapped Name in SizedBox to prevent 90 pixel right overflow
                 List<DataCell> rowCells = [DataCell(Text(student.rollNo, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))), DataCell(SizedBox(width: 140, child: Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true, maxLines: 3, overflow: TextOverflow.ellipsis)))];
                 
-                // Determine if student passed NATURALLY without the manual promote override
                 bool naturallyPassed = true;
                 if (currentSub.includeInPassFail && student.isSubjectAttempted(widget.termId, currentSub)) {
-                  if (currentSub.components.isEmpty) {
-                    naturallyPassed = student.getSubjectScore(widget.termId, currentSub) >= currentSub.passingMarks;
-                  } else {
-                    for (var c in currentSub.components) {
-                      if (c.passingMarks > 0 && (double.tryParse(student.termMarks[widget.termId]?['${currentSub.name}_${c.name}'] ?? "") ?? 0.0) < c.passingMarks) { naturallyPassed = false; }
-                    }
-                  }
+                  if (currentSub.components.isEmpty) { naturallyPassed = student.getSubjectScore(widget.termId, currentSub) >= currentSub.passingMarks; } 
+                  else { for (var c in currentSub.components) { if (c.passingMarks > 0 && (double.tryParse(student.termMarks[widget.termId]?['${currentSub.name}_${c.name}'] ?? "") ?? 0.0) < c.passingMarks) { naturallyPassed = false; } } }
                 }
 
+                // FIX: Widened the input field slightly and zeroed content padding to stop clipping multiple digits
                 Widget buildInput(String fieldKey, double max) {
                   return Container(
-                    width: 70, margin: const EdgeInsets.symmetric(vertical: 4), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    width: 75, margin: const EdgeInsets.symmetric(vertical: 4), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(20)), padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
                     child: MarkInputField(
                       key: ValueKey(fieldKey), initialValue: student.termMarks[widget.termId]?[fieldKey.split('_').last] ?? "", focusNode: _getFocusNode(fieldKey),
                       onFocusLostOrSubmitted: (val) async { final verified = _validateAndCleanInput(val, max); if (verified != null) { student.termMarks[widget.termId] ??= {}; student.termMarks[widget.termId]![fieldKey.split('_').last] = verified; await DatabaseHelper.instance.saveLiveMark(termId: widget.termId, rollNo: student.rollNo, markKey: fieldKey.split('_').last, value: verified); setState((){}); } else { _showValidationError(max); _getFocusNode(fieldKey).requestFocus(); } },
@@ -157,7 +148,6 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                   }
                 }
                 
-                // FIX: Strict Promote Logic -> Passed students get a Green Check, only Failed get the Star switch
                 if (!currentSub.includeInPassFail || !student.isSubjectAttempted(widget.termId, currentSub)) {
                   rowCells.add(const DataCell(Center(child: Text("-"))));
                 } else if (naturallyPassed) {
@@ -169,7 +159,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
               }).toList(),
             ),
           ),
-          const SizedBox(height: 200),
+          const SizedBox(height: 200), 
         ],
       ),
     );
