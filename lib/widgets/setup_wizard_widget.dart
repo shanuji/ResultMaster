@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/data_models.dart';
+import 'premium_ui.dart';
 
 class SetupWizardWidget extends StatefulWidget {
   final List<Color> palette;
@@ -30,9 +31,9 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
   InputDecoration _customInputDecoration(String label) {
     return InputDecoration(
       labelText: label, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade300)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade300)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)),
     );
   }
 
@@ -42,11 +43,12 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
       children: [
         Padding(
           padding: const EdgeInsets.all(12.0),
-          child: Container(
-            width: double.infinity, padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+          child: PremiumPanel(
+            padding: const EdgeInsets.all(16),
+            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(.55),
             child: Row(children: [
-              const Icon(Icons.info, color: Colors.blue, size: 28), const SizedBox(width: 12),
-              Expanded(child: RichText(text: const TextSpan(style: TextStyle(color: Colors.blue, fontSize: 13, height: 1.4), children: [TextSpan(text: 'These subjects apply automatically to every term.', style: TextStyle(fontWeight: FontWeight.bold))]))),
+              Icon(Icons.info_rounded, color: Theme.of(context).colorScheme.primary, size: 28), const SizedBox(width: 12),
+              Expanded(child: Text('These subjects apply automatically to every term.', style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer, fontSize: 13, height: 1.4, fontWeight: FontWeight.w800))),
             ]),
           ),
         ),
@@ -55,16 +57,16 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
             padding: const EdgeInsets.symmetric(horizontal: 12), itemCount: _subjects.length, itemBuilder: (context, index) {
               final sub = _subjects[index];
               return Card(
-                margin: const EdgeInsets.only(bottom: 12), elevation: 0, color: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: sub.themeColor, width: 1.5)),
+                margin: const EdgeInsets.only(bottom: 14), elevation: 0, color: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: sub.themeColor.withOpacity(.45), width: 1.5)),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(children: [ Expanded(child: TextFormField(initialValue: sub.name, decoration: _customInputDecoration('Subject Name'), onChanged: (val) => sub.name = val)), IconButton(icon: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.redAccent, borderRadius: BorderRadius.circular(4)), child: const Icon(Icons.delete, color: Colors.white, size: 16)), onPressed: () => _removeSubject(index)) ]),
+                      Row(children: [ Expanded(child: TextFormField(initialValue: sub.name, decoration: _customInputDecoration('Subject Name'), onChanged: (val) => sub.name = val)), IconButton(icon: Container(padding: const EdgeInsets.all(7), decoration: BoxDecoration(color: Theme.of(context).colorScheme.errorContainer, borderRadius: BorderRadius.circular(12)), child: Icon(Icons.delete_outline_rounded, color: Theme.of(context).colorScheme.error, size: 18)), onPressed: () => _removeSubject(index)) ]),
                       const SizedBox(height: 12),
-                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Include in Pass/Fail', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: sub.includeInPassFail, activeColor: Theme.of(context).colorScheme.primary, onChanged: (val) => setState(() => sub.includeInPassFail = val))]),
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Include in Pass/Fail', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)), Switch(value: sub.includeInPassFail, activeColor: Theme.of(context).colorScheme.primary, onChanged: (val) => setState(() => sub.includeInPassFail = val))]),
                       if (sub.components.isEmpty) ...[
                         const SizedBox(height: 8),
                         Row(children: [ Expanded(child: TextFormField(initialValue: sub.maxMarks.toString(), decoration: _customInputDecoration('Max Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.maxMarks = double.tryParse(val) ?? 100.0)), const SizedBox(width: 12), Expanded(child: TextFormField(initialValue: sub.passingMarks.toString(), decoration: _customInputDecoration('Pass Marks'), keyboardType: TextInputType.number, onChanged: (val) => sub.passingMarks = double.tryParse(val) ?? 33.0)) ]),
@@ -77,7 +79,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
                           return Padding(padding: const EdgeInsets.only(top: 8.0), child: Row(children: [ Expanded(flex: 2, child: TextFormField(initialValue: comp.name, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), onChanged: (val) => comp.name = val)), const SizedBox(width: 8), Expanded(child: TextFormField(initialValue: comp.maxMarks.toString(), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), keyboardType: TextInputType.number, onChanged: (val) { setState(() { comp.maxMarks = double.tryParse(val) ?? 0.0; sub.recalculateMaxMarks(); }); })), const SizedBox(width: 8), Expanded(child: TextFormField(initialValue: comp.passingMarks > 0 ? comp.passingMarks.toString() : "", decoration: const InputDecoration(hintText: '0', isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), keyboardType: TextInputType.number, onChanged: (val) => comp.passingMarks = double.tryParse(val) ?? 0.0)), IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20), onPressed: () => _removeComponent(index, cIdx), padding: EdgeInsets.zero, constraints: const BoxConstraints()) ]));
                         }),
                       ],
-                      const SizedBox(height: 12), Center(child: TextButton.icon(onPressed: () => _addComponent(index), icon: const Icon(Icons.add_circle_outline, size: 18), label: const Text('Add Component'))),
+                      const SizedBox(height: 12), Center(child: FilledButton.tonalIcon(onPressed: () => _addComponent(index), icon: const Icon(Icons.add_circle_outline, size: 18), label: const Text('Add Component'))),
                     ],
                   ),
                 ),
@@ -85,7 +87,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
             },
           ),
         ),
-        Padding(padding: const EdgeInsets.all(12.0), child: Row(children: [ Expanded(child: OutlinedButton.icon(style: OutlinedButton.styleFrom(side: BorderSide(color: Theme.of(context).colorScheme.primary), padding: const EdgeInsets.symmetric(vertical: 12), foregroundColor: Theme.of(context).colorScheme.primary), onPressed: _addSubject, icon: const Icon(Icons.add), label: const Text('Add Subject'))), const SizedBox(width: 12), Expanded(child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)), onPressed: () => widget.onSetupComplete("Global", _subjects), icon: const Icon(Icons.save), label: const Text('Save Setup'))), ]))
+        Padding(padding: const EdgeInsets.all(12.0), child: Row(children: [ Expanded(child: FilledButton.tonalIcon(style: OutlinedButton.styleFrom(side: BorderSide(color: Theme.of(context).colorScheme.primary), padding: const EdgeInsets.symmetric(vertical: 12), foregroundColor: Theme.of(context).colorScheme.primary), onPressed: _addSubject, icon: const Icon(Icons.add), label: const Text('Add Subject'))), const SizedBox(width: 12), Expanded(child: FilledButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)), onPressed: () => widget.onSetupComplete("Global", _subjects), icon: const Icon(Icons.save), label: const Text('Save Setup'))), ]))
       ],
     );
   }
