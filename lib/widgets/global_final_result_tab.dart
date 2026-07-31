@@ -17,7 +17,6 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
   bool _freezeName = true; 
   String _searchQuery = "";
 
-  // Helper for generating dynamic light pastel colors
   Color _getPastelColor(int index) {
     List<Color> bases = [Colors.blue, Colors.purple, Colors.teal, Colors.orange, Colors.pink, Colors.indigo];
     return bases[index % bases.length];
@@ -59,10 +58,12 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
 
     for (int i = 0; i < filteredStudents.length; i++) {
       var student = filteredStudents[i];
-      Color rowColor = i.isEven ? Colors.grey.shade200 : Colors.white; // FIX: Darker shade for alternating rows
+      Color rowColor = i.isEven ? Colors.grey.shade200 : Colors.white;
       
-      var cellRoll = DataCell(Text(student.rollNo)); 
-      var cellName = DataCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name));
+      var cellRoll = DataCell(Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0xFFE0F2F1), shape: BoxShape.circle), alignment: Alignment.center, child: Text(student.rollNo, style: const TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)))); 
+      
+      // FIX: Wrapped Name in sizing box
+      var cellName = DataCell(SizedBox(width: 120, child: Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis)));
       List<DataCell> fCells = []; List<DataCell> sCells = [];
 
       if (_freezeRollNo) fCells.add(cellRoll); else sCells.add(cellRoll);
@@ -74,7 +75,7 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
       for (int subIdx = 0; subIdx < widget.subjects.length; subIdx++) {
         var sub = widget.subjects[subIdx];
         Color subColor = _getPastelColor(subIdx);
-        Color cellBg = subColor.withOpacity(0.05);
+        Color cellBg = subColor.withOpacity(0.05); 
         Color totalBg = subColor.withOpacity(0.20);
 
         if (sub.components.isEmpty) {
@@ -114,7 +115,13 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
       Color statusColor = isPromoted ? Colors.orange : (naturallyFailed ? Colors.red : Colors.green);
 
       sCells.add(DataCell(Center(child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)))));
-      sCells.add(DataCell(Center(child: Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); }))));
+      
+      // FIX: Strict promote logic prevents passed students from accessing the switch
+      if (!naturallyFailed) {
+         sCells.add(const DataCell(Center(child: Icon(Icons.check_circle, color: Colors.green, size: 20))));
+      } else {
+         sCells.add(DataCell(Center(child: Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); }))));
+      }
 
       if (fixedCols.isNotEmpty) fixedRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: fCells));
       scrollRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: sCells));
