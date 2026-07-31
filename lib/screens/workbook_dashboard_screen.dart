@@ -61,7 +61,7 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
             ),
             TabBar(
               labelColor: Theme.of(context).colorScheme.primary, unselectedLabelColor: Colors.grey, indicatorColor: Theme.of(context).colorScheme.primary, indicatorWeight: 3, labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              tabs: const [Tab(icon: Icon(Icons.home), text: "Dash"), Tab(icon: Icon(Icons.people), text: "Students"), Tab(icon: Icon(Icons.menu_book), text: "Subjects"), Tab(icon: Icon(Icons.bar_chart), text: "Results")],
+              tabs: const [Tab(icon: Icon(Icons.home), text: "Dashboard"), Tab(icon: Icon(Icons.people), text: "Students"), Tab(icon: Icon(Icons.menu_book), text: "Subjects"), Tab(icon: Icon(Icons.bar_chart), text: "Results")],
             ),
             Expanded(
               child: TabBarView(
