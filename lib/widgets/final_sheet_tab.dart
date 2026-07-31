@@ -82,8 +82,8 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
       
       var cellRoll = DataCell(Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0xFFE0F2F1), shape: BoxShape.circle), alignment: Alignment.center, child: Text(student.rollNo, style: const TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)))); 
       
-      // FIX: Force max lines and wrap text inside a fixed-width container to prevent 90-pixel overflow!
-      var cellName = DataCell(SizedBox(width: 120, child: Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis)));
+      // FIX: Infinite height allowing full native text wrapping
+      var cellName = DataCell(Container(width: 140, padding: const EdgeInsets.symmetric(vertical: 8), child: Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true)));
 
       List<DataCell> fCells = []; List<DataCell> sCells = [];
       if (_freezeRollNo) fCells.add(cellRoll); else sCells.add(cellRoll);
@@ -127,15 +127,16 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
             decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
             clipBehavior: Clip.antiAlias,
             child: fixedCols.isEmpty ? 
-              SingleChildScrollView(scrollDirection: Axis.vertical, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 24, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows)))
+              SingleChildScrollView(scrollDirection: Axis.vertical, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 24, dataRowMaxHeight: double.infinity, dataRowMinHeight: 48, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows)))
               : 
               SingleChildScrollView(
                 scrollDirection: Axis.vertical,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    DataTable(columnSpacing: 24, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: fixedSortIndex, sortAscending: _isAscending, columns: fixedCols, rows: fixedRows),
-                    Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 24, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows))),
+                    // FIX: Max height infinity supports multi-line wrapped text
+                    DataTable(columnSpacing: 24, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), dataRowMaxHeight: double.infinity, dataRowMinHeight: 48, sortColumnIndex: fixedSortIndex, sortAscending: _isAscending, columns: fixedCols, rows: fixedRows),
+                    Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 24, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), dataRowMaxHeight: double.infinity, dataRowMinHeight: 48, sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows))),
                   ],
                 ),
               ),
