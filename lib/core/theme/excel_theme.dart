@@ -11,7 +11,7 @@ class ExcelTheme {
         scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(backgroundColor: primaryGreen, foregroundColor: Colors.white, centerTitle: false),
         dataTableTheme: const DataTableThemeData(
-          headingRowColor: WidgetStatePropertyAll(headerGreen),
+          headingRowColor: MaterialStatePropertyAll(headerGreen),
           dividerThickness: 0.7,
           dataRowMinHeight: 42,
           dataRowMaxHeight: 48,
