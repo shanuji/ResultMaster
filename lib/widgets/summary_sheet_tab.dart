@@ -48,11 +48,7 @@ class SummarySheetTabWidget extends StatelessWidget {
       double passPct = appeared > 0 ? (passed / appeared) * 100 : 0.0; 
       double qi = appeared > 0 ? (sumMarks / appeared) : 0.0;
       
-      if (appeared > 0) {
-        subjectsAttemptedCount++;
-        totalPassPctSum += passPct;
-        totalQiSum += qi;
-      }
+      if (appeared > 0) { subjectsAttemptedCount++; totalPassPctSum += passPct; totalQiSum += qi; }
 
       grandAppeared += appeared; grandPassed += passed; grandDistinction += distinction; distribution.forEach((key, val) => grandBrackets[key] = grandBrackets[key]! + val);
       return DataRow(color: MaterialStateProperty.all(index.isEven ? Colors.white : Colors.grey[50]), cells: [DataCell(Text(sub.name, style: const TextStyle(fontWeight: FontWeight.bold))), DataCell(Text(appeared.toString())), DataCell(Text(passed.toString())), DataCell(Text('${passPct.toStringAsFixed(2)}%')), DataCell(Text(distinction.toString())), DataCell(Text(qi.toStringAsFixed(2))), DataCell(Text(distribution['0-20'].toString())), DataCell(Text(distribution['21-32.9'].toString())), DataCell(Text(distribution['33-40'].toString())), DataCell(Text(distribution['41-50'].toString())), DataCell(Text(distribution['51-59.9'].toString())), DataCell(Text(distribution['60'].toString())), DataCell(Text(distribution['61-70'].toString())), DataCell(Text(distribution['71-74.9'].toString())), DataCell(Text(distribution['75-80'].toString())), DataCell(Text(distribution['81-90'].toString())), DataCell(Text(distribution['90'].toString())), DataCell(Text(distribution['91-94.9'].toString())), DataCell(Text(distribution['95-100'].toString()))]);
@@ -75,9 +71,10 @@ class SummarySheetTabWidget extends StatelessWidget {
               Row(
                 children: [
                   _buildOverviewCard("Total Subjects", subjects.length.toString(), Icons.menu_book, Colors.orange),
-                  _buildOverviewCard("Pass % (Avg)", "${avgPassPct.toStringAsFixed(2)}%", Icons.verified, Colors.blue),
+                  // FIX: Removed "(Avg)" 
+                  _buildOverviewCard("Pass %", "${avgPassPct.toStringAsFixed(2)}%", Icons.verified, Colors.blue),
                   _buildOverviewCard("Distinctions", grandDistinction.toString(), Icons.bar_chart, Colors.purple),
-                  _buildOverviewCard("QI (Avg)", avgQi.toStringAsFixed(2), Icons.star, Colors.green),
+                  _buildOverviewCard("QI", avgQi.toStringAsFixed(2), Icons.star, Colors.green),
                 ],
               ),
             ],
@@ -94,8 +91,10 @@ class SummarySheetTabWidget extends StatelessWidget {
                 scrollDirection: Axis.horizontal, 
                 child: DataTable(
                   columnSpacing: 20, 
+                  // FIX: Forced horizontal grids using TableBorder
+                  border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade300, width: 1)),
                   headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), 
-                  columns: const [DataColumn(label: Text('SUBJECT', style: TextStyle(fontWeight: FontWeight.bold))), DataColumn(label: Text('APP')), DataColumn(label: Text('PASS')), DataColumn(label: Text('PASS %')), DataColumn(label: Text('DISTT')), DataColumn(label: Text('QI (AVG)')), DataColumn(label: Text('0-20')), DataColumn(label: Text('21-32.9')), DataColumn(label: Text('33-40')), DataColumn(label: Text('41-50')), DataColumn(label: Text('51-59.9')), DataColumn(label: Text('60')), DataColumn(label: Text('61-70')), DataColumn(label: Text('71-74.9')), DataColumn(label: Text('75-80')), DataColumn(label: Text('81-90')), DataColumn(label: Text('90')), DataColumn(label: Text('91-94.9')), DataColumn(label: Text('95-100'))], 
+                  columns: const [DataColumn(label: Text('SUBJECT', style: TextStyle(fontWeight: FontWeight.bold))), DataColumn(label: Text('APP')), DataColumn(label: Text('PASS')), DataColumn(label: Text('PASS %')), DataColumn(label: Text('DISTT')), DataColumn(label: Text('QI')), DataColumn(label: Text('0-20')), DataColumn(label: Text('21-32.9')), DataColumn(label: Text('33-40')), DataColumn(label: Text('41-50')), DataColumn(label: Text('51-59.9')), DataColumn(label: Text('60')), DataColumn(label: Text('61-70')), DataColumn(label: Text('71-74.9')), DataColumn(label: Text('75-80')), DataColumn(label: Text('81-90')), DataColumn(label: Text('90')), DataColumn(label: Text('91-94.9')), DataColumn(label: Text('95-100'))], 
                   rows: [...subjectRows, sumRow]
                 )
               )
