@@ -8,6 +8,7 @@ import '../widgets/wavy_header.dart';
 import 'term_workspace_screen.dart';
 import '../widgets/setup_wizard_widget.dart';
 import '../widgets/global_final_result_tab.dart';
+import '../widgets/premium_ui.dart';
 
 class WorkbookDashboardScreen extends StatefulWidget {
   final int workbookId;
@@ -56,7 +57,11 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     
     List<StudentRow> filteredStudents = _searchQuery.isEmpty ? _students : _students.where((s) => s.name.toLowerCase().contains(_searchQuery.toLowerCase()) || s.rollNo.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
@@ -78,94 +83,60 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
               child: TabBarView(
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // TERMS COLUMN (Narrower Flex 2)
-                        Expanded(
-                          flex: 2, 
-                          child: Column(
-                            children: [
-                              Card(color: const Color(0xFFFFF8E1), elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), child: Padding(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.people, color: Colors.orangeAccent, size: 24), const SizedBox(width: 8), Column(children: [const Text("Students", style: TextStyle(color: Colors.grey, fontSize: 10)), Text("${_students.length}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))])]))),
-                              Card(color: const Color(0xFFE3F2FD), elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), child: Padding(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.folder, color: Colors.blueAccent, size: 24), const SizedBox(width: 8), Column(children: [const Text("Terms", style: TextStyle(color: Colors.grey, fontSize: 10)), Text("${_terms.length}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))])]))),
-                              const SizedBox(height: 8),
-                              Expanded(
-                                child: Card(
-                                  elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  child: Column(
-                                    children: [
-                                      Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("TERMS", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00897B), fontSize: 14)), InkWell(onTap: _showAddTermDialog, child: const Icon(Icons.add, color: Colors.blue, size: 20))])),
-                                      const Divider(height: 1),
-                                      Expanded(
-                                        child: ListView.separated(
-                                          itemCount: _terms.length, separatorBuilder: (c, i) => const Divider(height: 1),
-                                          itemBuilder: (context, index) {
-                                            return ListTile(
-                                              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                                              leading: Icon(Icons.folder, color: index.isEven ? Colors.green : Colors.orange),
-                                              title: Text(_terms[index].name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                              trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent, size: 16), onPressed: () => _deleteConfirmation("Term", _terms[index].name, () async { await DatabaseHelper.instance.deleteTerm(_terms[index].id); _loadData(); })),
-                                              onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (context) => TermWorkspaceScreen(term: _terms[index], subjects: _subjects, allStudents: _students))); _loadData(); },
-                                            );
-                                          }
-                                        ),
-                                      )
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // STUDENTS COLUMN (Wider Flex 5)
-                        Expanded(
-                          flex: 5, 
-                          child: Card(
-                            elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            child: Column(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.all(8.0),
-                                  child: Row(
-                                    children: [
-                                      const Text("STUDENT LIST", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00897B), fontSize: 14)),
-                                      const Spacer(),
-                                      Expanded(child: SizedBox(height: 35, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: EdgeInsets.zero, border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
-                                    ]
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade50, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 8)), onPressed: _importExcel, icon: const Icon(Icons.file_upload, size: 16, color: Colors.green), label: const Text('Upload Excel', style: TextStyle(color: Colors.green, fontSize: 12))),
-                                      const SizedBox(width: 8),
-                                      ElevatedButton.icon(style: ElevatedButton.styleFrom(elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 8)), onPressed: () async { int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++; await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), ""); _loadData(); }, icon: const Icon(Icons.add, size: 16), label: const Text("Add Student", style: TextStyle(fontSize: 12))),
-                                    ],
-                                  ),
-                                ),
-                                const Divider(height: 1),
-                                Expanded(
-                                  child: SingleChildScrollView(scrollDirection: Axis.vertical, child: DataTable(
-                                    columnSpacing: 16, horizontalMargin: 12, headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
-                                    columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Action'))],
-                                    rows: filteredStudents.asMap().entries.map((e) => DataRow(color: MaterialStateProperty.all(e.key.isEven ? Colors.grey[50] : Colors.white), cells: [
-                                      DataCell(AutoSelectTextField(initialValue: e.value.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; })),
-                                      DataCell(AutoSelectTextField(initialValue: e.value.name, decoration: InputDecoration(hintText: 'Student ${e.value.rollNo}', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; })),
-                                      DataCell(IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 18), onPressed: () => _deleteConfirmation("Student", e.value.name.isEmpty ? 'Student ${e.value.rollNo}' : e.value.name, () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, e.value.rollNo); _loadData(); }))),
-                                    ])).toList(),
-                                  ))
-                                )
-                              ],
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isTablet = constraints.maxWidth >= 760;
+                      final dashboard = _DashboardOverview(
+                        terms: _terms,
+                        students: _students,
+                        subjects: _subjects,
+                        filteredStudents: filteredStudents,
+                        searchQuery: _searchQuery,
+                        onSearchChanged: (val) => setState(() => _searchQuery = val),
+                        onAddTerm: _showAddTermDialog,
+                        onImportExcel: _importExcel,
+                        onAddStudent: () async {
+                          int nextRoll = 1;
+                          while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++;
+                          await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), "");
+                          _loadData();
+                        },
+                        onOpenTerm: (term) async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => TermWorkspaceScreen(term: term, subjects: _subjects, allStudents: _students),
                             ),
-                          )
-                        )
-                      ],
-                    ),
+                          );
+                          _loadData();
+                        },
+                        onDeleteTerm: (term) => _deleteConfirmation("Term", term.name, () async {
+                          await DatabaseHelper.instance.deleteTerm(term.id);
+                          _loadData();
+                        }),
+                        onDeleteStudent: (student) => _deleteConfirmation(
+                          "Student",
+                          student.name.isEmpty ? 'Student ${student.rollNo}' : student.name,
+                          () async {
+                            await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, student.rollNo);
+                            _loadData();
+                          },
+                        ),
+                        onUpdateStudent: (student, roll, name) {
+                          DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, student.rollNo, roll, name);
+                          student.rollNo = roll;
+                          student.name = name;
+                        },
+                      );
+                      return AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 280),
+                        child: Padding(
+                          key: ValueKey(isTablet),
+                          padding: EdgeInsets.all(isTablet ? 20 : 12),
+                          child: dashboard,
+                        ),
+                      );
+                    },
                   ),
                   SetupWizardWidget(
                     palette: const [Color(0xFF00897B), Colors.purple, Colors.teal, Colors.indigo, Colors.pink, Colors.orange], initialSubjects: _subjects,
@@ -178,6 +149,172 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DashboardOverview extends StatelessWidget {
+  final List<TermSetup> terms;
+  final List<StudentRow> students;
+  final List<SubjectSetup> subjects;
+  final List<StudentRow> filteredStudents;
+  final String searchQuery;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onAddTerm;
+  final VoidCallback onImportExcel;
+  final VoidCallback onAddStudent;
+  final ValueChanged<TermSetup> onOpenTerm;
+  final ValueChanged<TermSetup> onDeleteTerm;
+  final ValueChanged<StudentRow> onDeleteStudent;
+  final void Function(StudentRow student, String roll, String name) onUpdateStudent;
+
+  const _DashboardOverview({
+    required this.terms,
+    required this.students,
+    required this.subjects,
+    required this.filteredStudents,
+    required this.searchQuery,
+    required this.onSearchChanged,
+    required this.onAddTerm,
+    required this.onImportExcel,
+    required this.onAddStudent,
+    required this.onOpenTerm,
+    required this.onDeleteTerm,
+    required this.onDeleteStudent,
+    required this.onUpdateStudent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final isWide = constraints.maxWidth >= 760;
+      final termsPanel = _TermsPanel(terms: terms, onAddTerm: onAddTerm, onOpenTerm: onOpenTerm, onDeleteTerm: onDeleteTerm);
+      final studentsPanel = _StudentsPanel(
+        students: students,
+        filteredStudents: filteredStudents,
+        searchQuery: searchQuery,
+        onSearchChanged: onSearchChanged,
+        onImportExcel: onImportExcel,
+        onAddStudent: onAddStudent,
+        onDeleteStudent: onDeleteStudent,
+        onUpdateStudent: onUpdateStudent,
+      );
+      return Column(
+        children: [
+          GridView.count(
+            crossAxisCount: isWide ? 3 : 1,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            childAspectRatio: isWide ? 3.2 : 4.4,
+            children: [
+              PremiumStatCard(label: 'Students', value: '${students.length}', icon: Icons.groups_rounded, colors: const [Color(0xFF21D4B7), Color(0xFF0A8D82)]),
+              PremiumStatCard(label: 'Terms', value: '${terms.length}', icon: Icons.folder_copy_rounded, colors: const [Color(0xFF42A5F5), Color(0xFF1565C0)]),
+              PremiumStatCard(label: 'Subjects', value: '${subjects.length}', icon: Icons.auto_stories_rounded, colors: const [Color(0xFFFFB74D), Color(0xFFF57C00)]),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: isWide
+                ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(flex: 3, child: termsPanel), const SizedBox(width: 16), Expanded(flex: 7, child: studentsPanel)])
+                : ListView(children: [SizedBox(height: 360, child: termsPanel), const SizedBox(height: 16), SizedBox(height: 520, child: studentsPanel)]),
+          ),
+        ],
+      );
+    });
+  }
+}
+
+class _TermsPanel extends StatelessWidget {
+  final List<TermSetup> terms;
+  final VoidCallback onAddTerm;
+  final ValueChanged<TermSetup> onOpenTerm;
+  final ValueChanged<TermSetup> onDeleteTerm;
+  const _TermsPanel({required this.terms, required this.onAddTerm, required this.onOpenTerm, required this.onDeleteTerm});
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumPanel(
+      child: Column(children: [
+        PremiumSectionHeader(title: 'Terms', subtitle: 'Open a term workspace', icon: Icons.event_note_rounded, trailing: FilledButton.tonalIcon(onPressed: onAddTerm, icon: const Icon(Icons.add_rounded), label: const Text('Add'))),
+        const SizedBox(height: 14),
+        Expanded(
+          child: terms.isEmpty
+              ? PremiumEmptyState(icon: Icons.folder_open_rounded, title: 'No terms yet', message: 'Create a term to begin entering marks.', action: FilledButton.icon(onPressed: onAddTerm, icon: const Icon(Icons.add), label: const Text('Add term')))
+              : ListView.separated(
+                  itemCount: terms.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final term = terms[index];
+                    return Material(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(.06),
+                      borderRadius: BorderRadius.circular(20),
+                      child: ListTile(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primary, foregroundColor: Colors.white, child: Text('${index + 1}')),
+                        title: Text(term.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: const Text('Tap to manage marks and summaries'),
+                        trailing: IconButton(icon: const Icon(Icons.delete_outline_rounded), color: Theme.of(context).colorScheme.error, onPressed: () => onDeleteTerm(term)),
+                        onTap: () => onOpenTerm(term),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _StudentsPanel extends StatelessWidget {
+  final List<StudentRow> students;
+  final List<StudentRow> filteredStudents;
+  final String searchQuery;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onImportExcel;
+  final VoidCallback onAddStudent;
+  final ValueChanged<StudentRow> onDeleteStudent;
+  final void Function(StudentRow student, String roll, String name) onUpdateStudent;
+  const _StudentsPanel({required this.students, required this.filteredStudents, required this.searchQuery, required this.onSearchChanged, required this.onImportExcel, required this.onAddStudent, required this.onDeleteStudent, required this.onUpdateStudent});
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumPanel(
+      child: Column(children: [
+        PremiumSectionHeader(title: 'Student list', subtitle: 'Inline editable class register', icon: Icons.badge_rounded),
+        const SizedBox(height: 14),
+        Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.end, children: [
+          SizedBox(width: 280, child: TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search by roll no or name'), onChanged: onSearchChanged)),
+          FilledButton.tonalIcon(onPressed: onImportExcel, icon: const Icon(Icons.upload_file_rounded), label: const Text('Upload Excel')),
+          FilledButton.icon(onPressed: onAddStudent, icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Add Student')),
+        ]),
+        const SizedBox(height: 12),
+        Expanded(
+          child: filteredStudents.isEmpty
+              ? PremiumEmptyState(icon: Icons.manage_search_rounded, title: searchQuery.isEmpty ? 'No students yet' : 'No matches found', message: searchQuery.isEmpty ? 'Add students manually or import from Excel.' : 'Try a different roll number or name.', action: searchQuery.isEmpty ? FilledButton.icon(onPressed: onAddStudent, icon: const Icon(Icons.add), label: const Text('Add student')) : null)
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: SingleChildScrollView(
+                    child: DataTable(
+                      headingRowColor: WidgetStatePropertyAll(Theme.of(context).colorScheme.primary.withOpacity(.10)),
+                      dataRowMinHeight: 58,
+                      dataRowMaxHeight: 68,
+                      columnSpacing: 24,
+                      columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Action'))],
+                      rows: filteredStudents.asMap().entries.map((e) {
+                        final student = e.value;
+                        return DataRow(color: WidgetStatePropertyAll(e.key.isEven ? Colors.white : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(.35)), cells: [
+                          DataCell(AutoSelectTextField(initialValue: student.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none, filled: false), onChanged: (val) => onUpdateStudent(student, val, student.name))),
+                          DataCell(AutoSelectTextField(initialValue: student.name, decoration: InputDecoration(hintText: 'Student ${student.rollNo}', border: InputBorder.none, filled: false), onChanged: (val) => onUpdateStudent(student, student.rollNo, val))),
+                          DataCell(IconButton(icon: const Icon(Icons.delete_outline_rounded), color: Theme.of(context).colorScheme.error, onPressed: () => onDeleteStudent(student))),
+                        ]);
+                      }).toList(),
+                    ),
+                  ),
+                ),
+        ),
+      ]),
     );
   }
 }
