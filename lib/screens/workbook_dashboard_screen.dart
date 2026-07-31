@@ -51,8 +51,9 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
           children: [
             WavyHeader(title: _currentTitle, leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)), actions: [IconButton(icon: const Icon(Icons.edit, size: 20), onPressed: _editTitleDialog, tooltip: "Edit Class Name")]),
             TabBar(
-              labelColor: Theme.of(context).colorScheme.primary, unselectedLabelColor: Colors.grey, indicatorColor: Theme.of(context).colorScheme.primary, indicatorWeight: 3, labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              tabs: const [Tab(icon: Icon(Icons.home), text: "Dash"), Tab(icon: Icon(Icons.people), text: "Students"), Tab(icon: Icon(Icons.menu_book), text: "Subjects"), Tab(icon: Icon(Icons.bar_chart), text: "Results")],
+              labelColor: Theme.of(context).colorScheme.primary, unselectedLabelColor: Colors.grey, indicatorColor: Theme.of(context).colorScheme.primary, indicatorWeight: 3, labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              // FIX: Updated Tab Wordings
+              tabs: const [Tab(icon: Icon(Icons.home), text: "Dashboard"), Tab(icon: Icon(Icons.people), text: "Student List"), Tab(icon: Icon(Icons.menu_book), text: "Subject List"), Tab(icon: Icon(Icons.bar_chart), text: "Final Result")],
             ),
             Expanded(
               child: TabBarView(
@@ -136,17 +137,39 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                             ),
                           ),
                           const Divider(height: 1),
+                          // FIX: Custom Sticky Header Row
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            color: Colors.blue.shade50,
+                            child: const Row(
+                              children: [
+                                SizedBox(width: 60, child: Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold))),
+                                Expanded(child: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
+                                SizedBox(width: 40, child: Text('Action', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                              ],
+                            ),
+                          ),
+                          // FIX: Scrollable ListView for perfectly wrapped text and no right-overflow
                           Expanded(
-                            child: SingleChildScrollView(scrollDirection: Axis.vertical, child: DataTable(
-                              columnSpacing: 16, horizontalMargin: 16, headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
-                              columns: const [DataColumn(label: Text('Roll No')), DataColumn(label: Text('Name')), DataColumn(label: Text('Action'))],
-                              rows: filteredStudents.asMap().entries.map((e) => DataRow(color: MaterialStateProperty.all(e.key.isEven ? Colors.grey[50] : Colors.white), cells: [
-                                // FIX: Removed AutoSelectTextField, added strict sizing and wrapping
-                                DataCell(SizedBox(width: 60, child: TextFormField(initialValue: e.value.rollNo, decoration: const InputDecoration(hintText: 'Roll No', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, val, e.value.name); e.value.rollNo = val; }))),
-                                DataCell(SizedBox(width: 160, child: TextFormField(initialValue: e.value.name, maxLines: null, keyboardType: TextInputType.multiline, decoration: const InputDecoration(hintText: 'Student Name', border: InputBorder.none), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, e.value.rollNo, e.value.rollNo, val); e.value.name = val; }))),
-                                DataCell(Container(decoration: BoxDecoration(border: Border.all(color: Colors.red.shade100), borderRadius: BorderRadius.circular(8)), child: IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 18), onPressed: () => _deleteConfirmation("Student", e.value.name.isEmpty ? 'Student ${e.value.rollNo}' : e.value.name, () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, e.value.rollNo); _loadData(); })))),
-                              ])).toList(),
-                            ))
+                            child: ListView.separated(
+                              itemCount: filteredStudents.length,
+                              separatorBuilder: (context, index) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                var s = filteredStudents[index];
+                                return Container(
+                                  color: index.isEven ? Colors.white : Colors.grey[50],
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      SizedBox(width: 60, child: TextFormField(initialValue: s.rollNo, decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, s.rollNo, val, s.name); s.rollNo = val; })),
+                                      Expanded(child: TextFormField(initialValue: s.name, maxLines: null, keyboardType: TextInputType.multiline, decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero, hintText: 'Student Name'), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, s.rollNo, s.rollNo, val); s.name = val; })),
+                                      SizedBox(width: 40, child: IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 18), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: () => _deleteConfirmation("Student", s.name.isEmpty ? 'Student ${s.rollNo}' : s.name, () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, s.rollNo); _loadData(); }))),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
                           )
                         ],
                       ),
