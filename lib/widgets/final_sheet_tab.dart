@@ -41,16 +41,16 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
   @override
   Widget build(BuildContext context) {
     List<DataColumn> fixedCols = []; List<DataColumn> scrollCols = [];
-    var colRoll = DataColumn(label: const Text('Roll No'), onSort: (idx, asc) => _setSort('rollNo', asc));
-    var colName = DataColumn(label: const Text('Name'), onSort: (idx, asc) => _setSort('name', asc));
+    var colRoll = DataColumn(label: const Text('Roll No \u2191', style: TextStyle(fontWeight: FontWeight.bold)), onSort: (idx, asc) => _setSort('rollNo', asc));
+    var colName = DataColumn(label: const Text('Name', style: TextStyle(fontWeight: FontWeight.bold)), onSort: (idx, asc) => _setSort('name', asc));
 
     if (_freezeRollNo) fixedCols.add(colRoll); else scrollCols.add(colRoll);
     if (_freezeName) fixedCols.add(colName); else scrollCols.add(colName);
-    for (var sub in widget.subjects) { scrollCols.add(DataColumn(label: Text(sub.name.isEmpty ? 'Unnamed' : sub.name))); }
+    for (var sub in widget.subjects) { scrollCols.add(DataColumn(label: Text(sub.name.isEmpty ? 'Unnamed' : sub.name, style: const TextStyle(fontWeight: FontWeight.bold)))); }
     
-    var colTotal = DataColumn(label: const Text('Total'), numeric: true, onSort: (idx, asc) => _setSort('total', asc));
-    var colPct = DataColumn(label: const Text('%'), numeric: true, onSort: (idx, asc) => _setSort('pct', asc));
-    scrollCols.add(colTotal); scrollCols.add(colPct); scrollCols.add(const DataColumn(label: Text('Result')));
+    var colTotal = DataColumn(label: const Text('Total', style: TextStyle(fontWeight: FontWeight.bold)), numeric: true, onSort: (idx, asc) => _setSort('total', asc));
+    var colPct = DataColumn(label: const Text('%', style: TextStyle(fontWeight: FontWeight.bold)), numeric: true, onSort: (idx, asc) => _setSort('pct', asc));
+    scrollCols.add(colTotal); scrollCols.add(colPct); scrollCols.add(const DataColumn(label: Text('Result', style: TextStyle(fontWeight: FontWeight.bold))));
 
     List<DataRow> fixedRows = []; List<DataRow> scrollRows = [];
 
@@ -64,43 +64,41 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
         if (student.isSubjectAttempted(widget.termId, sub)) {
           double score = student.getSubjectScore(widget.termId, sub); totalObtained += score;
           
-          // Check if they naturally failed without promotion
           if (sub.includeInPassFail) {
             bool passedNormally = false;
             if (sub.components.isNotEmpty) {
               passedNormally = true;
-              for (var c in sub.components) {
-                if (c.passingMarks > 0 && (double.tryParse(student.termMarks[widget.termId]?['${sub.name}_${c.name}'] ?? "") ?? 0.0) < c.passingMarks) passedNormally = false;
-              }
-            } else {
-              passedNormally = score >= sub.passingMarks;
-            }
+              for (var c in sub.components) { if (c.passingMarks > 0 && (double.tryParse(student.termMarks[widget.termId]?['${sub.name}_${c.name}'] ?? "") ?? 0.0) < c.passingMarks) passedNormally = false; }
+            } else { passedNormally = score >= sub.passingMarks; }
             if (!passedNormally) naturallyFailed = true;
           }
 
-          if (sub.components.isEmpty && (student.termMarks[widget.termId]?[sub.name] == "A" || student.termMarks[widget.termId]?[sub.name] == "AB")) {
-            displayMark = student.termMarks[widget.termId]![sub.name]!; 
-          } else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
+          if (sub.components.isEmpty && (student.termMarks[widget.termId]?[sub.name] == "A" || student.termMarks[widget.termId]?[sub.name] == "AB")) { displayMark = student.termMarks[widget.termId]![sub.name]!; } 
+          else { displayMark = score.toStringAsFixed(1); if (displayMark.endsWith('.0')) displayMark = displayMark.substring(0, displayMark.length - 2); }
         }
-        subjectCells.add(DataCell(Text(displayMark)));
+        // Colors failing marks red
+        bool isFailMark = displayMark != "-" && displayMark != "A" && displayMark != "AB" && double.parse(displayMark) < sub.passingMarks;
+        subjectCells.add(DataCell(Center(child: Text(displayMark, style: TextStyle(color: isFailMark ? Colors.red : Colors.black87, fontWeight: isFailMark ? FontWeight.bold : FontWeight.normal)))));
       }
       
       double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
-      var cellRoll = DataCell(Text(student.rollNo)); var cellName = DataCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name));
+      
+      // FIXED: Avatar style Roll No
+      var cellRoll = DataCell(Container(width: 32, height: 32, decoration: BoxDecoration(color: const Color(0xFFE0F2F1), shape: BoxShape.circle), alignment: Alignment.center, child: Text(student.rollNo, style: const TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)))); 
+      var cellName = DataCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name));
 
       List<DataCell> fCells = []; List<DataCell> sCells = [];
       if (_freezeRollNo) fCells.add(cellRoll); else sCells.add(cellRoll);
       if (_freezeName) fCells.add(cellName); else sCells.add(cellName);
 
-      sCells.addAll(subjectCells); sCells.add(DataCell(Text(totalObtained.toStringAsFixed(1)))); sCells.add(DataCell(Text('${pct.toStringAsFixed(2)}%')));
+      sCells.addAll(subjectCells); sCells.add(DataCell(Center(child: Text(totalObtained.toStringAsFixed(1))))); sCells.add(DataCell(Center(child: Text('${pct.toStringAsFixed(2)}%'))));
       
-      // FIX 3: Detect if they had a promotion in this term
       bool hasSubjectPromotion = student.termPromotions[widget.termId]?.values.contains(true) ?? false;
       String statusText = hasSubjectPromotion ? 'PROMOTED' : (naturallyFailed ? 'FAIL' : 'PASS');
       Color statusColor = hasSubjectPromotion ? Colors.orange : (naturallyFailed ? Colors.red : Colors.green);
-      sCells.add(DataCell(Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold))));
+      sCells.add(DataCell(Center(child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)))));
 
-      Color rowColor = i.isEven ? Colors.grey[50]! : Colors.white;
+      Color rowColor = i.isEven ? Colors.white : Colors.grey[50]!;
       if (fixedCols.isNotEmpty) fixedRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: fCells));
       scrollRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: sCells));
     }
@@ -116,29 +114,34 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
     return Column(
       children: [
         Container(
-          color: Colors.blue[50], padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          color: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              const Icon(Icons.push_pin, size: 16, color: Colors.blue), const SizedBox(width: 6), const Text("Freeze Columns:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
-              const Spacer(), const Text("Roll No", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeRollNo = val)),
-              const SizedBox(width: 16), const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeName, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeName = val)),
+              const Icon(Icons.push_pin, size: 16, color: Color(0xFF00897B)), const SizedBox(width: 6), const Text("Freeze Columns:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF00897B))),
+              const Spacer(), const Text("Roll No", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: const Color(0xFF00897B), onChanged: (val) => setState(() => _freezeRollNo = val)),
+              const SizedBox(width: 16), const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeName, activeColor: const Color(0xFF00897B), onChanged: (val) => setState(() => _freezeName = val)),
             ],
           ),
         ),
         Expanded(
-          child: fixedCols.isEmpty ? 
-            SingleChildScrollView(scrollDirection: Axis.vertical, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue[100]), sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows)))
-            : 
-            SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: fixedSortIndex, sortAscending: _isAscending, columns: fixedCols, rows: fixedRows),
-                  Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue[100]), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows))),
-                ],
+          child: Container(
+            margin: const EdgeInsets.all(12),
+            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+            clipBehavior: Clip.antiAlias,
+            child: fixedCols.isEmpty ? 
+              SingleChildScrollView(scrollDirection: Axis.vertical, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 24, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows)))
+              : 
+              SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DataTable(columnSpacing: 24, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: fixedSortIndex, sortAscending: _isAscending, columns: fixedCols, rows: fixedRows),
+                    Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 24, headingRowColor: MaterialStateProperty.all(const Color(0xFFE0F2F1)), dataRowMinHeight: 48, dataRowMaxHeight: 48, sortColumnIndex: scrollSortIndex, sortAscending: _isAscending, columns: scrollCols, rows: scrollRows))),
+                  ],
+                ),
               ),
-            ),
+          ),
         ),
       ],
     );
