@@ -1,19 +1,21 @@
+// REPLACE ONLY THIS FILE
+// lib/screens/master_dashboard_home.dart
 
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../database/database_helper.dart';
-import '../models/data_models.dart';
 import '../utils/crash_logger.dart';
-import '../widgets/setup_wizard_widget.dart';
-import 'workbook_workspace_screen.dart';
+import '../widgets/wavy_header.dart';
+import 'workbook_dashboard_screen.dart';
 
 class MasterDashboardHome extends StatefulWidget {
   const MasterDashboardHome({super.key});
+
   @override
   State<MasterDashboardHome> createState() => _MasterDashboardHomeState();
 }
@@ -21,7 +23,7 @@ class MasterDashboardHome extends StatefulWidget {
 class _MasterDashboardHomeState extends State<MasterDashboardHome> {
   List<Map<String, dynamic>> _workbooks = [];
   bool _isLoading = true;
-  final List<Color> _palette = [Colors.blue, Colors.purple, Colors.teal, Colors.indigo, Colors.pink, Colors.orange, Colors.cyan, Colors.green];
+  bool _isWorkbooksTab = true;
 
   @override
   void initState() {
@@ -43,175 +45,351 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
       final dbPath = await getDatabasesPath();
       final path = p.join(dbPath, 'result_master.db');
       final file = File(path);
-      
+
       if (await file.exists()) {
         final bytes = await file.readAsBytes();
-        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').substring(0, 19);
+        final timestamp = DateTime.now()
+            .toIso8601String()
+            .replaceAll(':', '-')
+            .substring(0, 19);
+
         await Share.shareXFiles(
-          [XFile.fromData(bytes, mimeType: 'application/octet-stream', name: 'ResultMaster_Backup_$timestamp.db')],
-          text: 'Here is my complete database backup from the ResultMaster app!',
+          [
+            XFile.fromData(
+              bytes,
+              mimeType: 'application/octet-stream',
+              name: 'ResultMaster_Backup_$timestamp.db',
+            )
+          ],
+          text: 'ResultMaster Backup',
         );
-      } else {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No database found to backup yet.')));
       }
-    } catch (e) {
-      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup failed: $e')));
-    }
+    } catch (_) {}
   }
 
   Future<void> _importBackup() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(); 
-      if (result != null && result.files.single.path != null) {
-        File backupFile = File(result.files.single.path!);
-        
-        if (!mounted) return;
-        bool? confirm = await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Restore Database?'),
-            content: const Text('WARNING: This will completely wipe all current workbooks in the app and replace them with the data from the selected backup file. Continue?'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true), 
-                child: const Text('Overwite & Restore', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
-              ),
-            ],
-          )
-        );
+      final result = await FilePicker.platform.pickFiles();
 
-        if (confirm == true) {
-          await DatabaseHelper.instance.restoreDatabaseFile(backupFile);
-          _refreshWorkbooks();
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup Restored Successfully!'), backgroundColor: Colors.green));
-        }
+      if (result == null || result.files.single.path == null) return;
+
+      final backupFile = File(result.files.single.path!);
+
+      if (!mounted) return;
+
+      final restore = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Restore Backup"),
+          content: const Text(
+              "This will replace the existing database.\nContinue?"),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Cancel")),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Restore")),
+          ],
+        ),
+      );
+
+      if (restore == true) {
+        final dbPath = await getDatabasesPath();
+        await backupFile.copy(p.join(dbPath, "result_master.db"));
+        _refreshWorkbooks();
       }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restore failed: $e'), backgroundColor: Colors.red));
-    }
+    } catch (_) {}
   }
 
-  void _launchSetupWizard() {
-    showModalBottomSheet(
+  void _createNewWorkbookDialog() {
+    String title = "";
+
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => SetupWizardWidget(
-        palette: _palette,
-        onSetupComplete: (title, subjects) async {
-          int id = await DatabaseHelper.instance.createWorkbook(title, subjects);
-          _refreshWorkbooks();
-          _openWorkbook(id, title);
-        },
+      builder: (_) => AlertDialog(
+        title: const Text("Create Workbook"),
+        content: TextField(
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: "Workbook Title",
+          ),
+          onChanged: (v) => title = v,
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel")),
+          FilledButton(
+            onPressed: () async {
+              if (title.trim().isEmpty) return;
+
+              final id = await DatabaseHelper.instance
+                  .createWorkbook(title.trim());
+
+              if (!mounted) return;
+
+              Navigator.pop(context);
+
+              _refreshWorkbooks();
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => WorkbookDashboardScreen(
+                    workbookId: id,
+                    workbookTitle: title.trim(),
+                  ),
+                ),
+              ).then((_) => _refreshWorkbooks());
+            },
+            child: const Text("Create"),
+          )
+        ],
       ),
     );
-  }
-
-  void _openWorkbook(int id, String title) async {
-    final data = await DatabaseHelper.instance.loadWorkbookData(id);
-    if (!mounted) return;
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => WorkbookWorkspaceScreen(workbookId: id, workbookTitle: title, initialSubjects: data['subjects'], initialStudents: data['students'])));
-    _refreshWorkbooks();
   }
 
   void _deleteWorkbookConfirm(int id, String title) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Workbook?'),
-        content: Text('Are you sure you want to permanently delete "$title"?'),
+      builder: (_) => AlertDialog(
+        title: const Text("Delete Workbook"),
+        content: Text('Delete "$title"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () async { await DatabaseHelper.instance.deleteWorkbook(id); Navigator.pop(context); _refreshWorkbooks(); }, child: const Text('Delete', style: TextStyle(color: Colors.red))),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel")),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              await DatabaseHelper.instance.deleteWorkbook(id);
+
+              if (!mounted) return;
+
+              Navigator.pop(context);
+
+              _refreshWorkbooks();
+            },
+            child: const Text("Delete"),
+          )
         ],
+      ),
+    );
+  }
+
+  Widget _tab(
+      String title, IconData icon, bool selected, VoidCallback onTap) {
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          height: 52,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: selected
+                ? const LinearGradient(
+                    colors: [
+                      Color(0xff1CB5A3),
+                      Color(0xff0A8D82),
+                    ],
+                  )
+                : null,
+            color: selected ? null : Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(.06),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              )
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  color: selected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : Colors.black87,
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _workbookCard(Map<String, dynamic> item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          )
+        ],
+      ),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        leading: Container(
+          height: 56,
+          width: 56,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xffCFF7F1),
+                Color(0xffE8FCF8),
+              ],
+            ),
+          ),
+          child: const Icon(
+            Icons.menu_book_rounded,
+            color: Color(0xff0A8D82),
+          ),
+        ),
+        title: Text(
+          item["title"],
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            item["created_at"].toString().substring(0, 16),
+          ),
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline_rounded,
+              color: Colors.redAccent),
+          onPressed: () =>
+              _deleteWorkbookConfirm(item["id"], item["title"]),
+        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => WorkbookDashboardScreen(
+                workbookId: item["id"],
+                workbookTitle: item["title"],
+              ),
+            ),
+          ).then((_) => _refreshWorkbooks());
+        },
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('ResultMaster Hub', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          actions: [
-            IconButton(icon: const Icon(Icons.bug_report, color: Colors.red), tooltip: 'View Crash Logs', onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CrashLogScreen())))
-          ],
-          bottom: const TabBar(
-            tabs: [
-              Tab(icon: Icon(Icons.folder_copy), text: "My Workbooks"),
-              Tab(icon: Icon(Icons.security), text: "Data & Backup"),
+    return Scaffold(
+      backgroundColor: const Color(0xffF5F8FA),
+      floatingActionButton: _isWorkbooksTab
+          ? FloatingActionButton.extended(
+              onPressed: _createNewWorkbookDialog,
+              icon: const Icon(Icons.add),
+              label: const Text("Workbook"),
+            )
+          : null,
+      body: Column(
+        children: [
+          WavyHeader(
+            title: "ResultMaster Hub",
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CrashLogScreen(),
+                  ),
+                ),
+              )
             ],
           ),
-        ),
-        body: TabBarView(
-          children: [
-            _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _workbooks.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.folder_open, size: 80, color: Colors.grey),
-                            const SizedBox(height: 16),
-                            const Text('No workbooks created yet.', style: TextStyle(fontSize: 16, color: Colors.grey)),
-                            const SizedBox(height: 24),
-                            ElevatedButton.icon(onPressed: _launchSetupWizard, icon: const Icon(Icons.add), label: const Text('Create Dynamic Workbook'))
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _workbooks.length,
-                        padding: const EdgeInsets.all(12),
-                        itemBuilder: (context, index) {
-                          final item = _workbooks[index];
-                          return Card(
-                            elevation: 2, margin: const EdgeInsets.symmetric(vertical: 8),
-                            child: ListTile(
-                              leading: const CircleAvatar(child: Icon(Icons.assignment)),
-                              title: Text(item['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text('Created: ${item['created_at'].toString().substring(0, 16).replaceAll('T', ' at ')}'),
-                              trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.redAccent), onPressed: () => _deleteWorkbookConfirm(item['id'], item['title'])),
-                              onTap: () => _openWorkbook(item['id'], item['title']),
-                            ),
-                          );
-                        },
-                      ),
-            Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisAlignment: MainAxisAlignment.center,
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Container(
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: const Color(0xffEEF3F5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
                 children: [
-                  const Icon(Icons.cloud_sync, size: 80, color: Colors.blueAccent),
-                  const SizedBox(height: 24),
-                  const Text('Secure Your Data', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-                  const SizedBox(height: 8),
-                  const Text('Export your local database to keep a safe copy on Google Drive, or import a previous backup file to restore your grades.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 40),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[50], padding: const EdgeInsets.symmetric(vertical: 16)),
-                    icon: const Icon(Icons.upload_file, color: Colors.blue),
-                    label: const Text('Export Database Backup', style: TextStyle(fontSize: 16, color: Colors.blue)),
-                    onPressed: _exportBackup,
+                  _tab(
+                    "My Workbooks",
+                    Icons.folder_copy_rounded,
+                    _isWorkbooksTab,
+                    () => setState(() => _isWorkbooksTab = true),
                   ),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[50], padding: const EdgeInsets.symmetric(vertical: 16)),
-                    icon: const Icon(Icons.settings_backup_restore, color: Colors.deepOrange),
-                    label: const Text('Restore from Backup File', style: TextStyle(fontSize: 16, color: Colors.deepOrange)),
-                    onPressed: _importBackup,
+                  const SizedBox(width: 8),
+                  _tab(
+                    "Data & Backup",
+                    Icons.cloud_done_rounded,
+                    !_isWorkbooksTab,
+                    () => setState(() => _isWorkbooksTab = false),
                   ),
                 ],
               ),
-            )
-          ],
-        ),
-        floatingActionButton: _workbooks.isEmpty ? null : FloatingActionButton(onPressed: _launchSetupWizard, child: const Icon(Icons.add)),
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _isWorkbooksTab
+                    ? _workbooks.isEmpty
+                        ? Center(
+                            child: FilledButton.icon(
+                              onPressed: _createNewWorkbookDialog,
+                              icon: const Icon(Icons.add),
+                              label: const Text("Create Workbook"),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 4),
+                            itemCount: _workbooks.length,
+                            itemBuilder: (_, i) =>
+                                _workbookCard(_workbooks[i]),
+                          )
+                    : Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: _exportBackup,
+                              icon: const Icon(Icons.upload),
+                              label: const Text("Export Backup"),
+                            ),
+                            const SizedBox(height: 16),
+                            OutlinedButton.icon(
+                              onPressed: _importBackup,
+                              icon: const Icon(Icons.restore),
+                              label: const Text("Restore Backup"),
+                            ),
+                          ],
+                        ),
+                      ),
+          ),
+        ],
       ),
     );
   }
