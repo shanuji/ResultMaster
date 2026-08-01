@@ -140,19 +140,6 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
     return CreatedWorkbook(id: workbookId, draft: draft);
   }
 
-  Future<List<Student>> _registerStudents(Transaction txn, int registerId) async {
-    final rows = await txn.query(
-      'students',
-      where: 'register_id = ?',
-      whereArgs: <Object?>[registerId],
-      orderBy: 'roll_number ASC',
-    );
-    return rows
-        .map((row) => Student(
-              rollNumber: int.tryParse(row['roll_number'].toString()) ?? 0,
-              name: row['name'] as String,
-            ))
-        .toList();
   @override
   Future<void> renameWorkbook(int workbookId, String examinationName) async {
     final db = await _database.database;
@@ -210,8 +197,19 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
   );
 
   Future<List<Student>> _registerStudents(Transaction txn, int registerId) async {
-    final rows = await txn.query('class_register_students', where: 'register_id = ?', whereArgs: <Object?>[registerId], orderBy: 'roll_number ASC');
-    return rows.map((row) => Student(id: row['id'] as int?, rollNumber: row['roll_number'] as int, name: row['student_name'] as String)).toList();
+    final rows = await txn.query(
+      'students',
+      where: 'register_id = ?',
+      whereArgs: <Object?>[registerId],
+      orderBy: 'roll_number ASC',
+    );
+    return rows
+        .map((row) => Student(
+              id: row['id'] as int?,
+              rollNumber: int.tryParse(row['roll_number'].toString()) ?? 0,
+              name: row['name'] as String,
+            ))
+        .toList();
   }
 
   Future<void> _insertPlaceholderTab(Transaction txn, int workbookId, String name, String type, int order) => txn.insert('workbook_tabs', <String, Object?>{'workbook_id': workbookId, 'tab_name': name, 'tab_type': type, 'display_order': order, 'placeholder_json': '{"columns":["Roll No","Name"],"rows":[]}'});

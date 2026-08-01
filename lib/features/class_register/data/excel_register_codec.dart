@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:collection/collection.dart';
 import 'package:excel/excel.dart';
 
 import '../domain/class_register_failure.dart';
@@ -11,8 +10,12 @@ class ExcelRegisterCodec {
 
   Future<ExcelRegisterWorkbook> inspectFile(File file) async {
     final bytes = await file.readAsBytes();
-    final workbook = Excel.decodeBytes(bytes);
-    return ExcelRegisterWorkbook(workbook);
+    final excel = Excel.decodeBytes(bytes);
+    final sheets = <ExcelRegisterSheet>[
+      for (final entry in excel.tables.entries)
+        ExcelRegisterSheet(name: entry.key, columns: _columnsFor(entry.value)),
+    ];
+    return ExcelRegisterWorkbook(file: file, sheets: sheets, excel: excel);
   }
 
   Future<List<Student>> importFile(
@@ -48,69 +51,22 @@ class ExcelRegisterCodec {
     final headerRow = sheet.rows.first;
     final width = sheet.maxColumns > headerRow.length ? sheet.maxColumns : headerRow.length;
     return List.generate(width, (index) {
-      final header = _valueAt(headerRow, index);
+      final header = index < headerRow.length ? headerRow[index]?.value.toString().trim() ?? '' : '';
       return ExcelRegisterColumn(index: index, header: header.isEmpty ? 'Column ${index + 1}' : header);
     }, growable: false);
   }
-
-  bool _isBlankRow(List<Data?> row) => row.every((cell) => (cell?.value.toString().trim() ?? '').isEmpty);
-
-  String _valueAt(List<Data?> row, int index) => index < row.length ? row[index]?.value.toString().trim() ?? '' : '';
 }
 
 class ExcelRegisterWorkbook {
-  const ExcelRegisterWorkbook({required this.file, required this.sheets});
+  const ExcelRegisterWorkbook({required this.file, required this.sheets, required Excel excel}) : _excel = excel;
 
   final File file;
   final List<ExcelRegisterSheet> sheets;
-}
+  final Excel _excel;
 
-class ExcelRegisterSheet {
-  const ExcelRegisterSheet({required this.name, required this.columns});
+  List<String> get sheetNames => sheets.map((sheet) => sheet.name).toList(growable: false);
 
-  final String name;
-  final List<ExcelRegisterColumn> columns;
-}
-
-class ExcelRegisterColumn {
-  const ExcelRegisterColumn({required this.index, required this.header});
-
-  final int index;
-  final String header;
-
-  String get label => '${index + 1}. $header';
-}
-
-class ExcelRegisterImportPreview {
-  const ExcelRegisterImportPreview({
-    required this.students,
-    required this.skipped,
-    required this.duplicateRollNumbers,
-  });
-
-  final List<Student> students;
-  final int skipped;
-  final List<String> duplicateRollNumbers;
-
-  int get imported => students.length;
-  int get duplicates => duplicateRollNumbers.length;
-}
-
-class ExcelRegisterWorkbook {
-  const ExcelRegisterWorkbook(this._workbook);
-
-  final Excel _workbook;
-
-  List<String> get sheetNames => _workbook.tables.keys.toList(growable: false);
-
-  List<String> columns(String worksheet) {
-    final sheet = _sheet(worksheet);
-    if (sheet.rows.isEmpty) return const <String>[];
-    return sheet.rows.first
-        .map((cell) => cell?.value.toString().trim() ?? '')
-        .where((value) => value.isNotEmpty)
-        .toList(growable: false);
-  }
+  List<String> columns(String worksheet) => _sheetMetadata(worksheet).columns.map((column) => column.header).toList(growable: false);
 
   List<Student> students(
     int registerId, {
@@ -144,9 +100,27 @@ class ExcelRegisterWorkbook {
     return imported;
   }
 
+  ExcelRegisterSheet _sheetMetadata(String worksheet) => sheets.firstWhere((sheet) => sheet.name == worksheet);
+
   Sheet _sheet(String worksheet) {
-    final sheet = _workbook.tables[worksheet];
+    final sheet = _excel.tables[worksheet];
     if (sheet == null) throw ClassRegisterFailure('Worksheet "$worksheet" was not found.');
     return sheet;
   }
+}
+
+class ExcelRegisterSheet {
+  const ExcelRegisterSheet({required this.name, required this.columns});
+
+  final String name;
+  final List<ExcelRegisterColumn> columns;
+}
+
+class ExcelRegisterColumn {
+  const ExcelRegisterColumn({required this.index, required this.header});
+
+  final int index;
+  final String header;
+
+  String get label => '${index + 1}. $header';
 }
