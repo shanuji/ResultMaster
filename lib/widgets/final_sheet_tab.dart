@@ -18,6 +18,8 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
   
   final ScrollController _horizontalScroll1 = ScrollController();
   final ScrollController _horizontalScroll2 = ScrollController();
+  final ScrollController _verticalScroll = ScrollController();
+  bool _isTopVisible = true;
 
   @override
   void initState() { 
@@ -25,10 +27,15 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
     _sortedStudents = List.from(widget.students); _applySort(); 
     _horizontalScroll1.addListener(() { if (_horizontalScroll2.hasClients && _horizontalScroll2.offset != _horizontalScroll1.offset) { _horizontalScroll2.jumpTo(_horizontalScroll1.offset); } });
     _horizontalScroll2.addListener(() { if (_horizontalScroll1.hasClients && _horizontalScroll1.offset != _horizontalScroll2.offset) { _horizontalScroll1.jumpTo(_horizontalScroll2.offset); } });
+    
+    _verticalScroll.addListener(() {
+      if (_verticalScroll.offset > 20 && _isTopVisible) { setState(() => _isTopVisible = false); } 
+      else if (_verticalScroll.offset <= 20 && !_isTopVisible) { setState(() => _isTopVisible = true); }
+    });
   }
 
   @override
-  void dispose() { _horizontalScroll1.dispose(); _horizontalScroll2.dispose(); super.dispose(); }
+  void dispose() { _horizontalScroll1.dispose(); _horizontalScroll2.dispose(); _verticalScroll.dispose(); super.dispose(); }
 
   @override
   void didUpdateWidget(covariant FinalSheetTabWidget oldWidget) { super.didUpdateWidget(oldWidget); _sortedStudents = List.from(widget.students); _applySort(); }
@@ -123,15 +130,18 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
 
     return Column(
       children: [
-        Container(
-          color: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              const Icon(Icons.push_pin, size: 16, color: Color(0xFF00897B)), const SizedBox(width: 6), const Text("Freeze Columns:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF00897B))),
-              const Spacer(), const Text("Roll No", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: const Color(0xFF00897B), onChanged: (val) => setState(() => _freezeRollNo = val)),
-              const SizedBox(width: 16), const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeName, activeColor: const Color(0xFF00897B), onChanged: (val) => setState(() => _freezeName = val)),
-            ],
-          ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250), curve: Curves.easeInOut,
+          child: _isTopVisible ? Container(
+            color: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.push_pin, size: 16, color: Color(0xFF00897B)), const SizedBox(width: 6), const Text("Freeze Columns:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF00897B))),
+                const Spacer(), const Text("Roll No", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: const Color(0xFF00897B), onChanged: (val) => setState(() => _freezeRollNo = val)),
+                const SizedBox(width: 16), const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeName, activeColor: const Color(0xFF00897B), onChanged: (val) => setState(() => _freezeName = val)),
+              ],
+            ),
+          ) : const SizedBox(width: double.infinity),
         ),
         Expanded(
           child: Container(
@@ -144,6 +154,7 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
                 ]),
                 Expanded(
                   child: SingleChildScrollView(
+                    controller: _verticalScroll,
                     scrollDirection: Axis.vertical,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
