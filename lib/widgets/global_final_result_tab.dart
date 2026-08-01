@@ -19,16 +19,23 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
   
   final ScrollController _horizontalScroll1 = ScrollController();
   final ScrollController _horizontalScroll2 = ScrollController();
+  final ScrollController _verticalScroll = ScrollController();
+  bool _isTopVisible = true;
 
   @override
   void initState() {
     super.initState();
     _horizontalScroll1.addListener(() { if (_horizontalScroll2.hasClients && _horizontalScroll2.offset != _horizontalScroll1.offset) { _horizontalScroll2.jumpTo(_horizontalScroll1.offset); } });
     _horizontalScroll2.addListener(() { if (_horizontalScroll1.hasClients && _horizontalScroll1.offset != _horizontalScroll2.offset) { _horizontalScroll1.jumpTo(_horizontalScroll2.offset); } });
+    
+    _verticalScroll.addListener(() {
+      if (_verticalScroll.offset > 20 && _isTopVisible) { setState(() => _isTopVisible = false); } 
+      else if (_verticalScroll.offset <= 20 && !_isTopVisible) { setState(() => _isTopVisible = true); }
+    });
   }
 
   @override
-  void dispose() { _horizontalScroll1.dispose(); _horizontalScroll2.dispose(); super.dispose(); }
+  void dispose() { _horizontalScroll1.dispose(); _horizontalScroll2.dispose(); _verticalScroll.dispose(); super.dispose(); }
 
   Color _getPastelColor(int index) {
     List<Color> bases = [Colors.blue, Colors.purple, Colors.teal, Colors.orange, Colors.pink, Colors.indigo];
@@ -144,17 +151,20 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
 
     return Column(
       children: [
-        Container(
-          color: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Expanded(flex: 1, child: SizedBox(height: 40, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
-              const Spacer(),
-              const Icon(Icons.push_pin, size: 16, color: Colors.blue), const SizedBox(width: 6), const Text("Freeze:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
-              const SizedBox(width: 8), const Text("Roll", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeRollNo = val)),
-              const SizedBox(width: 8), const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeName, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeName = val)),
-            ],
-          ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250), curve: Curves.easeInOut,
+          child: _isTopVisible ? Container(
+            color: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(flex: 1, child: SizedBox(height: 40, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
+                const Spacer(),
+                const Icon(Icons.push_pin, size: 16, color: Colors.blue), const SizedBox(width: 6), const Text("Freeze:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
+                const SizedBox(width: 8), const Text("Roll", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeRollNo = val)),
+                const SizedBox(width: 8), const Text("Name", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeName, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeName = val)),
+              ],
+            ),
+          ) : const SizedBox(width: double.infinity),
         ),
         Expanded(
           child: Container(
@@ -167,6 +177,7 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
                 ]),
                 Expanded(
                   child: SingleChildScrollView(
+                    controller: _verticalScroll,
                     scrollDirection: Axis.vertical,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
