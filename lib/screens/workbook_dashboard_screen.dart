@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:excel/excel.dart' as ex;
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/data_models.dart';
 import '../database/database_helper.dart';
 import '../widgets/wavy_header.dart';
@@ -39,6 +42,34 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
   void _showAddTermDialog() { String termName = ""; showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Add Term'), content: TextField(decoration: const InputDecoration(labelText: 'Term Name'), autofocus: true, onChanged: (val) => termName = val), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), ElevatedButton(onPressed: () async { if (termName.trim().isEmpty) return; if (_terms.any((t) => t.name.trim().toLowerCase() == termName.trim().toLowerCase())) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name exists!'), backgroundColor: Colors.red)); return; } await DatabaseHelper.instance.createTerm(widget.workbookId, termName.trim()); if (context.mounted) Navigator.pop(context); _loadData(); }, child: const Text('Add Term'))])); }
   void _deleteConfirmation(String itemType, String itemName, VoidCallback onDelete) { showDialog(context: context, builder: (context) => AlertDialog(title: Text('Delete $itemType?'), content: Text('Are you sure you want to delete "$itemName"?'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Navigator.pop(context); onDelete(); }, child: const Text('Delete', style: const TextStyle(color: Colors.red)))])); }
 
+  // Excel Export
+  Future<void> _exportToExcel() async {
+    setState(() => _isLoading = true);
+    try {
+      var excel = ex.Excel.createExcel();
+      excel.rename('Sheet1', 'Student List');
+      var sheetStudents = excel['Student List'];
+      sheetStudents.appendRow([ex.TextCellValue('Roll No'), ex.TextCellValue('Name')]);
+      for (var s in _students) { sheetStudents.appendRow([ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)]); }
+
+      var sheetTerms = excel['Overview'];
+      sheetTerms.appendRow([ex.TextCellValue('Total Terms'), ex.TextCellValue('Total Students')]);
+      sheetTerms.appendRow([ex.TextCellValue(_terms.length.toString()), ex.TextCellValue(_students.length.toString())]);
+
+      var bytes = excel.encode();
+      if (bytes != null) {
+        final directory = await getTemporaryDirectory();
+        final file = File('${directory.path}/ResultMaster_${_currentTitle.replaceAll(' ', '_')}.xlsx');
+        await file.writeAsBytes(bytes);
+        await Share.shareXFiles([XFile(file.path)], text: 'ResultMaster Excel Export');
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel Exported!'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red));
+    }
+    setState(() => _isLoading = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -49,10 +80,16 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
       child: Scaffold(
         body: Column(
           children: [
-            WavyHeader(title: _currentTitle, leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)), actions: [IconButton(icon: const Icon(Icons.edit, size: 20), onPressed: _editTitleDialog, tooltip: "Edit Class Name")]),
+            WavyHeader(
+              title: _currentTitle, 
+              leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)), 
+              actions: [
+                IconButton(icon: const Icon(Icons.edit, size: 20), onPressed: _editTitleDialog, tooltip: "Edit Class Name"),
+                TextButton.icon(onPressed: _exportToExcel, icon: const Icon(Icons.download, color: Colors.white, size: 18), label: const Text("Download Result", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))
+              ]
+            ),
             TabBar(
               labelColor: Theme.of(context).colorScheme.primary, unselectedLabelColor: Colors.grey, indicatorColor: Theme.of(context).colorScheme.primary, indicatorWeight: 3, labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-              // FIX: Updated Tab Wordings
               tabs: const [Tab(icon: Icon(Icons.home), text: "Dashboard"), Tab(icon: Icon(Icons.people), text: "Student List"), Tab(icon: Icon(Icons.menu_book), text: "Subject List"), Tab(icon: Icon(Icons.bar_chart), text: "Final Result")],
             ),
             Expanded(
@@ -119,7 +156,7 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                               children: [
                                 const Text("STUDENT LIST", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00897B), fontSize: 16)),
                                 const Spacer(),
-                                Expanded(child: SizedBox(height: 35, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: EdgeInsets.zero, border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
+                                Expanded(child: SizedBox(height: 40, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
                               ]
                             ),
                           ),
@@ -137,7 +174,6 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                             ),
                           ),
                           const Divider(height: 1),
-                          // FIX: Custom Sticky Header Row
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             color: Colors.blue.shade50,
@@ -149,7 +185,6 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                               ],
                             ),
                           ),
-                          // FIX: Scrollable ListView for perfectly wrapped text and no right-overflow
                           Expanded(
                             child: ListView.separated(
                               itemCount: filteredStudents.length,
