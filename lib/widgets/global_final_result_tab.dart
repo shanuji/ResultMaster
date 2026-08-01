@@ -16,10 +16,31 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
   bool _freezeRollNo = true; 
   bool _freezeName = true; 
   String _searchQuery = "";
+  
+  final ScrollController _horizontalScroll1 = ScrollController();
+  final ScrollController _horizontalScroll2 = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _horizontalScroll1.addListener(() { if (_horizontalScroll2.hasClients && _horizontalScroll2.offset != _horizontalScroll1.offset) { _horizontalScroll2.jumpTo(_horizontalScroll1.offset); } });
+    _horizontalScroll2.addListener(() { if (_horizontalScroll1.hasClients && _horizontalScroll1.offset != _horizontalScroll2.offset) { _horizontalScroll1.jumpTo(_horizontalScroll2.offset); } });
+  }
+
+  @override
+  void dispose() { _horizontalScroll1.dispose(); _horizontalScroll2.dispose(); super.dispose(); }
 
   Color _getPastelColor(int index) {
     List<Color> bases = [Colors.blue, Colors.purple, Colors.teal, Colors.orange, Colors.pink, Colors.indigo];
     return bases[index % bases.length];
+  }
+
+  Widget _buildCell(Widget child, double width, {Color? bgColor, bool isHeader = false}) {
+    return Container(
+      width: width, height: 60, padding: const EdgeInsets.symmetric(horizontal: 4), alignment: Alignment.center,
+      decoration: BoxDecoration(color: bgColor ?? Colors.white, border: Border(bottom: BorderSide(color: Colors.grey.shade300), right: BorderSide(color: Colors.grey.shade300), top: isHeader ? BorderSide(color: Colors.grey.shade300) : BorderSide.none)),
+      child: child,
+    );
   }
 
   @override
@@ -28,43 +49,40 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
 
     List<StudentRow> filteredStudents = _searchQuery.isEmpty ? widget.students : widget.students.where((s) => s.name.toLowerCase().contains(_searchQuery.toLowerCase()) || s.rollNo.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
-    List<DataColumn> fixedCols = []; List<DataColumn> scrollCols = [];
-    var colRoll = const DataColumn(label: Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold)));
-    var colName = const DataColumn(label: Text('Name', style: TextStyle(fontWeight: FontWeight.bold)));
-
-    if (_freezeRollNo) fixedCols.add(colRoll); else scrollCols.add(colRoll);
-    if (_freezeName) fixedCols.add(colName); else scrollCols.add(colName);
+    List<Widget> fHeaders = []; List<Widget> sHeaders = [];
+    var hRoll = _buildCell(const Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: Colors.blue.shade50, isHeader: true);
+    var hName = _buildCell(const Text('Name', style: TextStyle(fontWeight: FontWeight.bold)), 140, bgColor: Colors.blue.shade50, isHeader: true);
+    if (_freezeRollNo) fHeaders.add(hRoll); else sHeaders.add(hRoll);
+    if (_freezeName) fHeaders.add(hName); else sHeaders.add(hName);
     
     for (var sub in widget.subjects) {
       if (sub.components.isEmpty) {
-        for (var term in widget.terms) { scrollCols.add(DataColumn(label: Text('${sub.name}\n${term.name}', textAlign: TextAlign.center))); }
-        scrollCols.add(DataColumn(label: Text('${sub.name}\nTotal', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold))));
+        for (var term in widget.terms) { sHeaders.add(_buildCell(Text('${sub.name}\n${term.name}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)), 75, bgColor: Colors.blue.shade50, isHeader: true)); }
+        sHeaders.add(_buildCell(Text('${sub.name}\nTotal', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)), 75, bgColor: Colors.blue.shade50, isHeader: true));
       } else {
         for (var comp in sub.components) {
-          for (var term in widget.terms) { scrollCols.add(DataColumn(label: Text('${sub.name}\n${comp.name} ${term.name}', textAlign: TextAlign.center))); }
-          scrollCols.add(DataColumn(label: Text('${sub.name}\n${comp.name} Total', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold))));
+          for (var term in widget.terms) { sHeaders.add(_buildCell(Text('${sub.name}\n${comp.name} ${term.name}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)), 75, bgColor: Colors.blue.shade50, isHeader: true)); }
+          sHeaders.add(_buildCell(Text('${sub.name}\n${comp.name} Total', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)), 75, bgColor: Colors.blue.shade50, isHeader: true));
         }
       }
     }
-    scrollCols.add(const DataColumn(label: Text('GRAND\nTOTAL', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold))));
-    scrollCols.add(const DataColumn(label: Text('OVERALL\n%', textAlign: TextAlign.center)));
-    scrollCols.add(const DataColumn(label: Text('RESULT', textAlign: TextAlign.center)));
-    scrollCols.add(const DataColumn(label: Text('PROMOTE\nOVERALL', textAlign: TextAlign.center, style: TextStyle(color: Colors.blue))));
+    sHeaders.add(_buildCell(const Text('GRAND\nTOTAL', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: Colors.blue.shade50, isHeader: true));
+    sHeaders.add(_buildCell(const Text('OVERALL\n%', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: Colors.blue.shade50, isHeader: true));
+    sHeaders.add(_buildCell(const Text('RESULT', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: Colors.blue.shade50, isHeader: true));
+    sHeaders.add(_buildCell(const Text('PROMOTE\nOVERALL', textAlign: TextAlign.center, style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)), 80, bgColor: Colors.blue.shade50, isHeader: true));
 
     double globalMaxMarks = 0.0;
     for (var sub in widget.subjects) { globalMaxMarks += (sub.maxMarks * widget.terms.length); }
 
-    List<DataRow> fixedRows = []; List<DataRow> scrollRows = [];
+    List<Widget> fBody = []; List<Widget> sBody = [];
 
     for (int i = 0; i < filteredStudents.length; i++) {
       var student = filteredStudents[i];
-      Color rowColor = i.isEven ? Colors.grey.shade200 : Colors.white;
+      Color rowColor = i.isEven ? Colors.grey.shade200 : Colors.white; 
       
-      var cellRoll = DataCell(Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0xFFE0F2F1), shape: BoxShape.circle), alignment: Alignment.center, child: Text(student.rollNo, style: const TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold)))); 
-      
-      // FIX: Wrapped Name in sizing box
-      var cellName = DataCell(SizedBox(width: 120, child: Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis)));
-      List<DataCell> fCells = []; List<DataCell> sCells = [];
+      var cellRoll = _buildCell(Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0xFFE0F2F1), shape: BoxShape.circle), alignment: Alignment.center, child: Text(student.rollNo, style: const TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold))), 60, bgColor: rowColor); 
+      var cellName = _buildCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis), 140, bgColor: rowColor);
+      List<Widget> fCells = []; List<Widget> sCells = [];
 
       if (_freezeRollNo) fCells.add(cellRoll); else sCells.add(cellRoll);
       if (_freezeName) fCells.add(cellName); else sCells.add(cellName);
@@ -81,32 +99,30 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
         if (sub.components.isEmpty) {
           double subjectTotal = 0.0;
           for (var term in widget.terms) {
-            double s = student.getSubjectScore(term.id, sub);
-            subjectTotal += s;
-            sCells.add(DataCell(Container(color: cellBg, alignment: Alignment.center, child: Text(student.termMarks[term.id]?[sub.name] ?? "-"))));
+            double s = student.getSubjectScore(term.id, sub); subjectTotal += s;
+            sCells.add(_buildCell(Text(student.termMarks[term.id]?[sub.name] ?? "-"), 75, bgColor: cellBg));
             if (sub.includeInPassFail) { bool passedNormally = s >= sub.passingMarks; if (!passedNormally && student.isSubjectAttempted(term.id, sub)) naturallyFailed = true; }
           }
           studentGrandTotal += subjectTotal;
-          sCells.add(DataCell(Container(padding: const EdgeInsets.symmetric(horizontal: 8), color: totalBg, alignment: Alignment.center, child: Text(subjectTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
+          sCells.add(_buildCell(Text(subjectTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)), 75, bgColor: totalBg));
         } else {
           for (var comp in sub.components) {
             double compTotal = 0.0;
             for (var term in widget.terms) {
               String markKey = '${sub.name}_${comp.name}';
-              double s = double.tryParse(student.termMarks[term.id]?[markKey] ?? "") ?? 0.0;
-              compTotal += s;
-              sCells.add(DataCell(Container(color: cellBg, alignment: Alignment.center, child: Text(student.termMarks[term.id]?[markKey] ?? "-"))));
+              double s = double.tryParse(student.termMarks[term.id]?[markKey] ?? "") ?? 0.0; compTotal += s;
+              sCells.add(_buildCell(Text(student.termMarks[term.id]?[markKey] ?? "-"), 75, bgColor: cellBg));
             }
             studentGrandTotal += compTotal;
-            sCells.add(DataCell(Container(padding: const EdgeInsets.symmetric(horizontal: 8), color: totalBg, alignment: Alignment.center, child: Text(compTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
+            sCells.add(_buildCell(Text(compTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)), 75, bgColor: totalBg));
           }
           for (var term in widget.terms) { if (sub.includeInPassFail && student.isSubjectAttempted(term.id, sub)) { for (var c in sub.components) { if (c.passingMarks > 0 && (double.tryParse(student.termMarks[term.id]?['${sub.name}_${c.name}'] ?? "") ?? 0.0) < c.passingMarks) naturallyFailed = true; } } }
         }
       }
 
       double pct = globalMaxMarks > 0 ? (studentGrandTotal / globalMaxMarks) * 100 : 0.0;
-      sCells.add(DataCell(Center(child: Text(studentGrandTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)))));
-      sCells.add(DataCell(Center(child: Text('${pct.toStringAsFixed(2)}%'))));
+      sCells.add(_buildCell(Text(studentGrandTotal.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: rowColor));
+      sCells.add(_buildCell(Text('${pct.toStringAsFixed(2)}%'), 80, bgColor: rowColor));
       
       bool hasAnySubjectPromotion = false;
       for (var t in widget.terms) { if (student.termPromotions[t.id]?.values.contains(true) == true) hasAnySubjectPromotion = true; }
@@ -114,17 +130,16 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
       String statusText = isPromoted ? 'PROMOTED' : (naturallyFailed ? 'FAIL' : 'PASS');
       Color statusColor = isPromoted ? Colors.orange : (naturallyFailed ? Colors.red : Colors.green);
 
-      sCells.add(DataCell(Center(child: Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)))));
+      sCells.add(_buildCell(Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)), 80, bgColor: rowColor));
       
-      // FIX: Strict promote logic prevents passed students from accessing the switch
       if (!naturallyFailed) {
-         sCells.add(const DataCell(Center(child: Icon(Icons.check_circle, color: Colors.green, size: 20))));
+         sCells.add(_buildCell(const Icon(Icons.check_circle, color: Colors.green, size: 20), 80, bgColor: rowColor));
       } else {
-         sCells.add(DataCell(Center(child: Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); }))));
+         sCells.add(_buildCell(Switch(value: student.isPromotedOverall, activeColor: Colors.blue, onChanged: (val) async { await DatabaseHelper.instance.updateStudentOverallPromotion(widget.workbookId, student.rollNo, val); setState(() { student.isPromotedOverall = val; }); }), 80, bgColor: rowColor));
       }
 
-      if (fixedCols.isNotEmpty) fixedRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: fCells));
-      scrollRows.add(DataRow(color: MaterialStateProperty.all(rowColor), cells: sCells));
+      if (fCells.isNotEmpty) fBody.add(Row(children: fCells));
+      sBody.add(Row(children: sCells));
     }
 
     return Column(
@@ -133,7 +148,7 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
           color: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              Expanded(flex: 1, child: SizedBox(height: 35, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: EdgeInsets.zero, border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
+              Expanded(flex: 1, child: SizedBox(height: 40, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
               const Spacer(),
               const Icon(Icons.push_pin, size: 16, color: Colors.blue), const SizedBox(width: 6), const Text("Freeze:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
               const SizedBox(width: 8), const Text("Roll", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), Switch(value: _freezeRollNo, activeColor: Colors.blue, onChanged: (val) => setState(() => _freezeRollNo = val)),
@@ -142,19 +157,29 @@ class _GlobalFinalResultTabWidgetState extends State<GlobalFinalResultTabWidget>
           ),
         ),
         Expanded(
-          child: fixedCols.isEmpty ? 
-            SingleChildScrollView(scrollDirection: Axis.vertical, child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue.shade50), border: TableBorder.all(color: Colors.grey.shade300, width: 1), columns: scrollCols, rows: scrollRows)))
-            : 
-            SingleChildScrollView(
-              scrollDirection: Axis.vertical,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue.shade50), dataRowMinHeight: 48, dataRowMaxHeight: 48, border: TableBorder.all(color: Colors.grey.shade300, width: 1), columns: fixedCols, rows: fixedRows),
-                  Expanded(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: DataTable(columnSpacing: 16, headingRowColor: MaterialStateProperty.all(Colors.blue.shade50), dataRowMinHeight: 48, dataRowMaxHeight: 48, border: TableBorder.all(color: Colors.grey.shade300, width: 1), columns: scrollCols, rows: scrollRows))),
-                ],
-              ),
-            ),
+          child: Container(
+            margin: const EdgeInsets.all(12), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)), clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                Row(children: [
+                  if (fHeaders.isNotEmpty) Row(children: fHeaders),
+                  Expanded(child: SingleChildScrollView(controller: _horizontalScroll1, scrollDirection: Axis.horizontal, child: Row(children: sHeaders))),
+                ]),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (fBody.isNotEmpty) Column(children: fBody),
+                        Expanded(child: SingleChildScrollView(controller: _horizontalScroll2, scrollDirection: Axis.horizontal, child: Column(children: sBody))),
+                      ]
+                    )
+                  )
+                )
+              ]
+            )
+          ),
         ),
       ],
     );
