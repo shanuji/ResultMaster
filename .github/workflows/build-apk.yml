@@ -30,6 +30,9 @@ jobs:
       - name: Generate App Icons
         run: flutter pub run flutter_launcher_icons
 
+      - name: Fix Duplicate Icon Error
+        run: find android/app/src/main/res -name "ic_launcher*.xml" -type f -delete
+
       - name: Build Test APK (Debug version for easy testing)
         run: flutter build apk --debug
 
