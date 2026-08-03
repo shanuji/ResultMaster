@@ -73,64 +73,64 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> with 
     Future.delayed(const Duration(milliseconds: 100), () => _getStudentNode('name_${_students.length - 1}').requestFocus());
   }
 
-  // MASSIVE MULTI-SHEET EXCEL EXPORT
+  // MASSIVE MULTI-SHEET EXCEL EXPORT (Fixed for older Excel Package compatibility)
   Future<void> _exportToExcel() async {
     setState(() => _isLoading = true);
     try {
       var excel = ex.Excel.createExcel();
       
       var sheetStudents = excel['Student List'];
-      sheetStudents.appendRow([ex.TextCellValue('Roll No'), ex.TextCellValue('Name')]);
-      for (var s in _students) { sheetStudents.appendRow([ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)]); }
+      sheetStudents.appendRow(['Roll No', 'Name']);
+      for (var s in _students) { sheetStudents.appendRow([s.rollNo, s.name]); }
 
       var sheetGlobal = excel['Global Final Result'];
-      List<ex.CellValue> globalHeaders = [ex.TextCellValue('Roll No'), ex.TextCellValue('Name')];
-      for (var sub in _subjects) { for (var term in _terms) { globalHeaders.add(ex.TextCellValue('${sub.name} ${term.name}')); } globalHeaders.add(ex.TextCellValue('${sub.name} Total')); }
-      globalHeaders.addAll([ex.TextCellValue('GRAND TOTAL'), ex.TextCellValue('OVERALL %')]);
+      List<dynamic> globalHeaders = ['Roll No', 'Name'];
+      for (var sub in _subjects) { for (var term in _terms) { globalHeaders.add('${sub.name} ${term.name}'); } globalHeaders.add('${sub.name} Total'); }
+      globalHeaders.addAll(['GRAND TOTAL', 'OVERALL %']);
       sheetGlobal.appendRow(globalHeaders);
 
       double globalMax = 0; for (var sub in _subjects) { globalMax += (sub.maxMarks * _terms.length); }
       for (var s in _students) {
-        List<ex.CellValue> row = [ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)];
+        List<dynamic> row = [s.rollNo, s.name];
         double grandTotal = 0;
         for (var sub in _subjects) {
           double subTotal = 0;
-          for (var term in _terms) { double score = s.getSubjectScore(term.id, sub); subTotal += score; row.add(ex.TextCellValue(s.termMarks[term.id]?[sub.name] ?? "-")); }
-          grandTotal += subTotal; row.add(ex.DoubleCellValue(subTotal));
+          for (var term in _terms) { double score = s.getSubjectScore(term.id, sub); subTotal += score; row.add(s.termMarks[term.id]?[sub.name] ?? "-"); }
+          grandTotal += subTotal; row.add(subTotal);
         }
-        row.addAll([ex.DoubleCellValue(grandTotal), ex.TextCellValue('${globalMax > 0 ? (grandTotal / globalMax * 100).toStringAsFixed(2) : 0}%')]);
+        row.addAll([grandTotal, '${globalMax > 0 ? (grandTotal / globalMax * 100).toStringAsFixed(2) : 0}%']);
         sheetGlobal.appendRow(row);
       }
 
       for (var term in _terms) {
         var termSheet = excel['${term.name} Final Result'];
-        List<ex.CellValue> tHeaders = [ex.TextCellValue('Roll No'), ex.TextCellValue('Name')];
-        for (var sub in _subjects) { tHeaders.add(ex.TextCellValue(sub.name)); }
-        tHeaders.addAll([ex.TextCellValue('Total'), ex.TextCellValue('%')]);
+        List<dynamic> tHeaders = ['Roll No', 'Name'];
+        for (var sub in _subjects) { tHeaders.add(sub.name); }
+        tHeaders.addAll(['Total', '%']);
         termSheet.appendRow(tHeaders);
 
         double termMax = _subjects.fold(0.0, (sum, sub) => sum + sub.maxMarks);
         for (var s in _students) {
-          List<ex.CellValue> row = [ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)];
+          List<dynamic> row = [s.rollNo, s.name];
           double termTotal = 0;
-          for (var sub in _subjects) { double score = s.getSubjectScore(term.id, sub); termTotal += score; row.add(ex.TextCellValue(s.termMarks[term.id]?[sub.name] ?? "-")); }
-          row.addAll([ex.DoubleCellValue(termTotal), ex.TextCellValue('${termMax > 0 ? (termTotal / termMax * 100).toStringAsFixed(2) : 0}%')]);
+          for (var sub in _subjects) { double score = s.getSubjectScore(term.id, sub); termTotal += score; row.add(s.termMarks[term.id]?[sub.name] ?? "-"); }
+          row.addAll([termTotal, '${termMax > 0 ? (termTotal / termMax * 100).toStringAsFixed(2) : 0}%']);
           termSheet.appendRow(row);
         }
 
         for (var sub in _subjects) {
           var subSheet = excel['${term.name} - ${sub.name}'];
-          List<ex.CellValue> subHeaders = [ex.TextCellValue('Roll No'), ex.TextCellValue('Name')];
-          if (sub.components.isEmpty) { subHeaders.add(ex.TextCellValue('Marks')); } 
-          else { for(var c in sub.components) subHeaders.add(ex.TextCellValue(c.name)); }
-          subHeaders.add(ex.TextCellValue('Promoted'));
+          List<dynamic> subHeaders = ['Roll No', 'Name'];
+          if (sub.components.isEmpty) { subHeaders.add('Marks'); } 
+          else { for(var c in sub.components) subHeaders.add(c.name); }
+          subHeaders.add('Promoted');
           subSheet.appendRow(subHeaders);
 
           for (var s in _students) {
-            List<ex.CellValue> sRow = [ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)];
-            if (sub.components.isEmpty) { sRow.add(ex.TextCellValue(s.termMarks[term.id]?[sub.name] ?? "-")); } 
-            else { for(var c in sub.components) sRow.add(ex.TextCellValue(s.termMarks[term.id]?['${sub.name}_${c.name}'] ?? "-")); }
-            sRow.add(ex.TextCellValue(s.termPromotions[term.id]?[sub.name] == true ? "YES" : "NO"));
+            List<dynamic> sRow = [s.rollNo, s.name];
+            if (sub.components.isEmpty) { sRow.add(s.termMarks[term.id]?[sub.name] ?? "-"); } 
+            else { for(var c in sub.components) sRow.add(s.termMarks[term.id]?['${sub.name}_${c.name}'] ?? "-"); }
+            sRow.add(s.termPromotions[term.id]?[sub.name] == true ? "YES" : "NO");
             subSheet.appendRow(sRow);
           }
         }
