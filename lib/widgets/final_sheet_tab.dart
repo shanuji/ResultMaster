@@ -73,7 +73,7 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
     }
     
     var hRoll = _buildCell(buildSortHeader('Roll', 'rollNo'), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true);
-    var hName = _buildCell(buildSortHeader('Name', 'name'), 140, bgColor: const Color(0xFFE0F2F1), isHeader: true);
+    var hName = _buildCell(buildSortHeader('Name', 'name'), 160, bgColor: const Color(0xFFE0F2F1), isHeader: true);
     if (_freezeRollNo) fHeaders.add(hRoll); else sHeaders.add(hRoll);
     if (_freezeName) fHeaders.add(hName); else sHeaders.add(hName);
 
@@ -109,7 +109,7 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
       
       double pct = totalMax > 0 ? (totalObtained / totalMax) * 100 : 0.0;
       var cellRoll = _buildCell(Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0xFFE0F2F1), shape: BoxShape.circle), alignment: Alignment.center, child: Text(student.rollNo, style: const TextStyle(color: Color(0xFF00695C), fontWeight: FontWeight.bold))), 60, bgColor: rowColor); 
-      var cellName = _buildCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis), 140, bgColor: rowColor);
+      var cellName = _buildCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, softWrap: true, maxLines: 2, overflow: TextOverflow.ellipsis), 160, bgColor: rowColor);
 
       List<Widget> fCells = []; List<Widget> sCells = [];
       if (_freezeRollNo) fCells.add(cellRoll); else sCells.add(cellRoll);
