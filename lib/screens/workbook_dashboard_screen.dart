@@ -19,16 +19,40 @@ class WorkbookDashboardScreen extends StatefulWidget {
   State<WorkbookDashboardScreen> createState() => _WorkbookDashboardScreenState();
 }
 
-class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
+class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   List<TermSetup> _terms = [];
   List<StudentRow> _students = [];
   List<SubjectSetup> _subjects = [];
   bool _isLoading = true;
   String _currentTitle = "";
   String _searchQuery = "";
+  
+  final ScrollController _verticalScroll = ScrollController();
+  bool _isTopVisible = true;
+  final Map<String, FocusNode> _studentFocusNodes = {};
 
   @override
-  void initState() { super.initState(); _currentTitle = widget.workbookTitle; _loadData(); }
+  void initState() { 
+    super.initState(); 
+    _tabController = TabController(length: 4, vsync: this);
+    _currentTitle = widget.workbookTitle; 
+    _loadData(); 
+    _verticalScroll.addListener(() {
+      if (_verticalScroll.offset > 20 && _isTopVisible) { setState(() => _isTopVisible = false); } 
+      else if (_verticalScroll.offset <= 20 && !_isTopVisible) { setState(() => _isTopVisible = true); }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _verticalScroll.dispose();
+    for (var node in _studentFocusNodes.values) { node.dispose(); }
+    super.dispose();
+  }
+
+  FocusNode _getStudentNode(String key) => _studentFocusNodes.putIfAbsent(key, () => FocusNode());
 
   Future<void> _loadData() async {
     var data = await DatabaseHelper.instance.loadFullWorkbookData(widget.workbookId);
@@ -42,27 +66,84 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
   void _showAddTermDialog() { String termName = ""; showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Add Term'), content: TextField(decoration: const InputDecoration(labelText: 'Term Name'), autofocus: true, onChanged: (val) => termName = val), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), ElevatedButton(onPressed: () async { if (termName.trim().isEmpty) return; if (_terms.any((t) => t.name.trim().toLowerCase() == termName.trim().toLowerCase())) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name exists!'), backgroundColor: Colors.red)); return; } await DatabaseHelper.instance.createTerm(widget.workbookId, termName.trim()); if (context.mounted) Navigator.pop(context); _loadData(); }, child: const Text('Add Term'))])); }
   void _deleteConfirmation(String itemType, String itemName, VoidCallback onDelete) { showDialog(context: context, builder: (context) => AlertDialog(title: Text('Delete $itemType?'), content: Text('Are you sure you want to delete "$itemName"?'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Navigator.pop(context); onDelete(); }, child: const Text('Delete', style: const TextStyle(color: Colors.red)))])); }
 
-  // Excel Export
+  Future<void> _addNewStudentFocus(int currentIndex) async {
+    int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++; 
+    await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), ""); 
+    await _loadData();
+    Future.delayed(const Duration(milliseconds: 100), () => _getStudentNode('name_${_students.length - 1}').requestFocus());
+  }
+
+  // MASSIVE MULTI-SHEET EXCEL EXPORT
   Future<void> _exportToExcel() async {
     setState(() => _isLoading = true);
     try {
       var excel = ex.Excel.createExcel();
-      excel.rename('Sheet1', 'Student List');
+      
       var sheetStudents = excel['Student List'];
       sheetStudents.appendRow([ex.TextCellValue('Roll No'), ex.TextCellValue('Name')]);
       for (var s in _students) { sheetStudents.appendRow([ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)]); }
 
-      var sheetTerms = excel['Overview'];
-      sheetTerms.appendRow([ex.TextCellValue('Total Terms'), ex.TextCellValue('Total Students')]);
-      sheetTerms.appendRow([ex.TextCellValue(_terms.length.toString()), ex.TextCellValue(_students.length.toString())]);
+      var sheetGlobal = excel['Global Final Result'];
+      List<ex.CellValue> globalHeaders = [ex.TextCellValue('Roll No'), ex.TextCellValue('Name')];
+      for (var sub in _subjects) { for (var term in _terms) { globalHeaders.add(ex.TextCellValue('${sub.name} ${term.name}')); } globalHeaders.add(ex.TextCellValue('${sub.name} Total')); }
+      globalHeaders.addAll([ex.TextCellValue('GRAND TOTAL'), ex.TextCellValue('OVERALL %')]);
+      sheetGlobal.appendRow(globalHeaders);
 
+      double globalMax = 0; for (var sub in _subjects) { globalMax += (sub.maxMarks * _terms.length); }
+      for (var s in _students) {
+        List<ex.CellValue> row = [ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)];
+        double grandTotal = 0;
+        for (var sub in _subjects) {
+          double subTotal = 0;
+          for (var term in _terms) { double score = s.getSubjectScore(term.id, sub); subTotal += score; row.add(ex.TextCellValue(s.termMarks[term.id]?[sub.name] ?? "-")); }
+          grandTotal += subTotal; row.add(ex.DoubleCellValue(subTotal));
+        }
+        row.addAll([ex.DoubleCellValue(grandTotal), ex.TextCellValue('${globalMax > 0 ? (grandTotal / globalMax * 100).toStringAsFixed(2) : 0}%')]);
+        sheetGlobal.appendRow(row);
+      }
+
+      for (var term in _terms) {
+        var termSheet = excel['${term.name} Final Result'];
+        List<ex.CellValue> tHeaders = [ex.TextCellValue('Roll No'), ex.TextCellValue('Name')];
+        for (var sub in _subjects) { tHeaders.add(ex.TextCellValue(sub.name)); }
+        tHeaders.addAll([ex.TextCellValue('Total'), ex.TextCellValue('%')]);
+        termSheet.appendRow(tHeaders);
+
+        double termMax = _subjects.fold(0.0, (sum, sub) => sum + sub.maxMarks);
+        for (var s in _students) {
+          List<ex.CellValue> row = [ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)];
+          double termTotal = 0;
+          for (var sub in _subjects) { double score = s.getSubjectScore(term.id, sub); termTotal += score; row.add(ex.TextCellValue(s.termMarks[term.id]?[sub.name] ?? "-")); }
+          row.addAll([ex.DoubleCellValue(termTotal), ex.TextCellValue('${termMax > 0 ? (termTotal / termMax * 100).toStringAsFixed(2) : 0}%')]);
+          termSheet.appendRow(row);
+        }
+
+        for (var sub in _subjects) {
+          var subSheet = excel['${term.name} - ${sub.name}'];
+          List<ex.CellValue> subHeaders = [ex.TextCellValue('Roll No'), ex.TextCellValue('Name')];
+          if (sub.components.isEmpty) { subHeaders.add(ex.TextCellValue('Marks')); } 
+          else { for(var c in sub.components) subHeaders.add(ex.TextCellValue(c.name)); }
+          subHeaders.add(ex.TextCellValue('Promoted'));
+          subSheet.appendRow(subHeaders);
+
+          for (var s in _students) {
+            List<ex.CellValue> sRow = [ex.TextCellValue(s.rollNo), ex.TextCellValue(s.name)];
+            if (sub.components.isEmpty) { sRow.add(ex.TextCellValue(s.termMarks[term.id]?[sub.name] ?? "-")); } 
+            else { for(var c in sub.components) sRow.add(ex.TextCellValue(s.termMarks[term.id]?['${sub.name}_${c.name}'] ?? "-")); }
+            sRow.add(ex.TextCellValue(s.termPromotions[term.id]?[sub.name] == true ? "YES" : "NO"));
+            subSheet.appendRow(sRow);
+          }
+        }
+      }
+
+      if (excel.tables.containsKey('Sheet1')) { excel.delete('Sheet1'); }
       var bytes = excel.encode();
       if (bytes != null) {
         final directory = await getTemporaryDirectory();
         final file = File('${directory.path}/ResultMaster_${_currentTitle.replaceAll(' ', '_')}.xlsx');
         await file.writeAsBytes(bytes);
         await Share.shareXFiles([XFile(file.path)], text: 'ResultMaster Excel Export');
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel Exported!'), backgroundColor: Colors.green));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Excel Exported Successfully!'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red));
@@ -75,9 +156,11 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
     if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     List<StudentRow> filteredStudents = _searchQuery.isEmpty ? _students : _students.where((s) => s.name.toLowerCase().contains(_searchQuery.toLowerCase()) || s.rollNo.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
 
-    return DefaultTabController(
-      length: 4,
+    return PopScope(
+      canPop: _tabController.index == 0,
+      onPopInvoked: (didPop) { if (!didPop) { _tabController.animateTo(0); } },
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
         body: Column(
           children: [
             WavyHeader(
@@ -89,11 +172,13 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
               ]
             ),
             TabBar(
+              controller: _tabController,
               labelColor: Theme.of(context).colorScheme.primary, unselectedLabelColor: Colors.grey, indicatorColor: Theme.of(context).colorScheme.primary, indicatorWeight: 3, labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
               tabs: const [Tab(icon: Icon(Icons.home), text: "Dashboard"), Tab(icon: Icon(Icons.people), text: "Student List"), Tab(icon: Icon(Icons.menu_book), text: "Subject List"), Tab(icon: Icon(Icons.bar_chart), text: "Final Result")],
             ),
             Expanded(
               child: TabBarView(
+                controller: _tabController,
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
                   // TAB 1: DASHBOARD
@@ -145,38 +230,42 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                   
                   // TAB 2: STUDENTS
                   Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: const EdgeInsets.all(12.0),
                     child: Card(
                       elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       child: Column(
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Row(
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 250), curve: Curves.easeInOut,
+                            child: _isTopVisible ? Column(
                               children: [
-                                const Text("STUDENT LIST", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00897B), fontSize: 16)),
-                                const Spacer(),
-                                Expanded(child: SizedBox(height: 40, child: TextField(decoration: InputDecoration(hintText: 'Search...', prefixIcon: const Icon(Icons.search, size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20))), onChanged: (val) => setState(() => _searchQuery = val)))),
+                                Padding(
+                                  padding: const EdgeInsets.all(12.0),
+                                  child: Row(
+                                    children: [
+                                      const Text("STUDENT LIST", style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF00897B), fontSize: 14)),
+                                      const Spacer(),
+                                      Expanded(child: SizedBox(height: 35, child: TextField(style: const TextStyle(color: Colors.black87), decoration: InputDecoration(hintText: 'Search...', hintStyle: const TextStyle(color: Colors.grey), prefixIcon: const Icon(Icons.search, size: 18), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), filled: true, fillColor: Colors.grey.shade50, border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none)), onChanged: (val) => setState(() => _searchQuery = val)))),
+                                    ]
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                  child: Wrap(
+                                    spacing: 8, runSpacing: 8, alignment: WrapAlignment.end,
+                                    children: [
+                                      ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade50, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12)), onPressed: _importExcel, icon: const Icon(Icons.file_upload, size: 16, color: Colors.green), label: const Text('Upload Excel', style: TextStyle(color: Colors.green))),
+                                      ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade50, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12)), onPressed: () { FocusScope.of(context).unfocus(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Changes Saved! SQLite Auto-saves constantly.'), backgroundColor: Colors.green)); }, icon: const Icon(Icons.save, size: 16, color: Colors.blue), label: const Text('Save', style: TextStyle(color: Colors.blue))),
+                                      ElevatedButton.icon(style: ElevatedButton.styleFrom(elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12)), onPressed: () => _addNewStudentFocus(filteredStudents.length), icon: const Icon(Icons.add, size: 16), label: const Text("Add Student")),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
                               ]
-                            ),
+                            ) : const SizedBox(width: double.infinity),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade50, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12)), onPressed: _importExcel, icon: const Icon(Icons.file_upload, size: 16, color: Colors.green), label: const Text('Upload Excel', style: TextStyle(color: Colors.green))),
-                                const SizedBox(width: 8),
-                                ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade50, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12)), onPressed: () { FocusScope.of(context).unfocus(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Changes Saved!'), backgroundColor: Colors.green)); }, icon: const Icon(Icons.save, size: 16, color: Colors.blue), label: const Text('Save', style: TextStyle(color: Colors.blue))),
-                                const SizedBox(width: 8),
-                                ElevatedButton.icon(style: ElevatedButton.styleFrom(elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 12)), onPressed: () async { int nextRoll = 1; while (_students.any((s) => s.rollNo.trim() == nextRoll.toString())) nextRoll++; await DatabaseHelper.instance.insertLiveStudent(widget.workbookId, nextRoll.toString(), ""); _loadData(); }, icon: const Icon(Icons.add, size: 16), label: const Text("Add Student")),
-                              ],
-                            ),
-                          ),
-                          const Divider(height: 1),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            color: Colors.blue.shade50,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), color: Colors.blue.shade50,
                             child: const Row(
                               children: [
                                 SizedBox(width: 60, child: Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold))),
@@ -187,18 +276,19 @@ class _WorkbookDashboardScreenState extends State<WorkbookDashboardScreen> {
                           ),
                           Expanded(
                             child: ListView.separated(
+                              controller: _verticalScroll,
                               itemCount: filteredStudents.length,
                               separatorBuilder: (context, index) => const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 var s = filteredStudents[index];
                                 return Container(
                                   color: index.isEven ? Colors.white : Colors.grey[50],
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                                   child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
-                                      SizedBox(width: 60, child: TextFormField(initialValue: s.rollNo, decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, s.rollNo, val, s.name); s.rollNo = val; })),
-                                      Expanded(child: TextFormField(initialValue: s.name, maxLines: null, keyboardType: TextInputType.multiline, decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero, hintText: 'Student Name'), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, s.rollNo, s.rollNo, val); s.name = val; })),
+                                      SizedBox(width: 60, child: TextFormField(focusNode: _getStudentNode('roll_$index'), initialValue: s.rollNo, decoration: const InputDecoration(border: InputBorder.none, isDense: true), textAlignVertical: TextAlignVertical.center, onFieldSubmitted: (_) => _getStudentNode('name_$index').requestFocus(), onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, s.rollNo, val, s.name); s.rollNo = val; })),
+                                      Expanded(child: TextFormField(focusNode: _getStudentNode('name_$index'), initialValue: s.name, maxLines: null, keyboardType: TextInputType.multiline, decoration: const InputDecoration(border: InputBorder.none, isDense: true, hintText: 'Student Name'), textAlignVertical: TextAlignVertical.center, onFieldSubmitted: (_) { if (index + 1 < filteredStudents.length) { _getStudentNode('roll_${index+1}').requestFocus(); } else { _addNewStudentFocus(index); } }, onChanged: (val) { DatabaseHelper.instance.updateLiveStudentInfo(widget.workbookId, s.rollNo, s.rollNo, val); s.name = val; })),
                                       SizedBox(width: 40, child: IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 18), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: () => _deleteConfirmation("Student", s.name.isEmpty ? 'Student ${s.rollNo}' : s.name, () async { await DatabaseHelper.instance.deleteLiveStudent(widget.workbookId, s.rollNo); _loadData(); }))),
                                     ],
                                   ),
