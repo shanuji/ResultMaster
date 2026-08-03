@@ -176,7 +176,7 @@ class _SummarySheetTabWidgetState extends State<SummarySheetTabWidget> {
                   _buildCell(const Text('SUBJECT', style: TextStyle(fontWeight: FontWeight.bold)), 140, bgColor: const Color(0xFFE0F2F1), isHeader: true),
                   Expanded(child: SingleChildScrollView(controller: _horizontalScroll1, scrollDirection: Axis.horizontal, child: Row(children: [
                     _buildCell(const Text('APP', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('PASS', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('PASS %', style: TextStyle(fontWeight: FontWeight.bold)), 75, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('DISTT', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('QI', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true),
-                    ...['0-20', '21-32.9', '33-40', '41-50', '51-59.9', '60', '61-70', '71-74.9', '75-80', '81-90', '90', '91-94.9', '95-100'].map((e) => _buildCell(Text(e, style: const TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true)).toList()
+                    ...['0-20', '21-32.9', '33-40', '41-50', '51-59.9', '60', '61-70', '71-74.9', '75-80', '81-90', '90', '91-94.9', '95-100'].map((e) => _buildCell(Text(e, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true)).toList()
                   ]))),
                 ]),
                 Expanded(
