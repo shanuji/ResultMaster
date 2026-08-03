@@ -1,7 +1,6 @@
 name: result_master
-description: Offline School Result Management App with Excel XLSX parser, PDF engine, and SQLite.
+description: A new Flutter project for managing student results.
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -10,20 +9,26 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
-  cupertino_icons: ^1.0.8
-  sqflite: ^2.3.2
-  path: ^1.9.0
-  excel: ^4.0.6
-  pdf: ^3.11.1
-  share_plus: ^7.0.2
-  file_picker: ^8.0.3
+  cupertino_icons: ^1.0.2
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  excel: ^3.0.0
+  file_picker: ^6.1.1
+  share_plus: ^7.1.0
+  path_provider: ^2.1.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
-  
+  assets:
+    - assets/
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.png"
+  min_sdk_android: 21
