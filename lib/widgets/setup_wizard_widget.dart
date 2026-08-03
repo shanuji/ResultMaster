@@ -23,15 +23,7 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
   void _confirmDelete(String message, VoidCallback onDelete) { showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Confirm Deletion'), content: Text(message), actions: [ TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Navigator.pop(context); onDelete(); }, child: const Text('Delete', style: const TextStyle(color: Colors.red))) ])); }
   void _addSubject() { setState(() { _subjects.add(SubjectSetup(name: '', themeColor: widget.palette[_subjects.length % widget.palette.length])); }); }
   void _removeSubject(int index) { _confirmDelete("Delete entire subject?", () => setState(() => _subjects.removeAt(index))); }
-  
-  // FIX: Opens 2 spaces instead of 1 when adding components
-  void _addComponent(int subjectIndex) { 
-    setState(() { 
-      _subjects[subjectIndex].components.add(SubjectComponent(name: '', maxMarks: 0)); 
-      _subjects[subjectIndex].components.add(SubjectComponent(name: '', maxMarks: 0)); 
-    }); 
-  }
-  
+  void _addComponent(int subjectIndex) { setState(() { _subjects[subjectIndex].components.add(SubjectComponent(name: '', maxMarks: 0)); _subjects[subjectIndex].components.add(SubjectComponent(name: '', maxMarks: 0)); }); }
   void _removeComponent(int subjectIndex, int componentIndex) { _confirmDelete("Delete this component?", () => setState(() { _subjects[subjectIndex].components.removeAt(componentIndex); _subjects[subjectIndex].recalculateMaxMarks(); })); }
 
   InputDecoration _customInputDecoration(String label) {
@@ -78,28 +70,13 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
                       ] else ...[
                         const SizedBox(height: 8), const Text('Components (Theory, Practical, etc.)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), const Text('Hint: Passing marks = 0 means component is ignored.', style: TextStyle(fontSize: 11, color: Colors.grey)), const SizedBox(height: 8),
                         
-                        Row(children: [ 
-                          Expanded(child: Text('Comp. Name', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), 
-                          const SizedBox(width: 8), 
-                          SizedBox(width: 60, child: Text('Max', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), 
-                          const SizedBox(width: 8), 
-                          SizedBox(width: 60, child: Text('Pass', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), 
-                          const SizedBox(width: 40) 
-                        ]),
+                        Row(children: [ Expanded(child: Text('Comp. Name', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), const SizedBox(width: 8), SizedBox(width: 60, child: Text('Max', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), const SizedBox(width: 8), SizedBox(width: 60, child: Text('Pass', style: TextStyle(fontSize: 11, color: Colors.grey.shade600))), const SizedBox(width: 40) ]),
                         const Divider(height: 8),
                         ...sub.components.asMap().entries.map((cEntry) {
                           int cIdx = cEntry.key; var comp = cEntry.value;
                           return Padding(
                             padding: const EdgeInsets.only(top: 8.0), 
-                            child: Row(children: [ 
-                              Expanded(child: TextFormField(initialValue: comp.name, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), onChanged: (val) => comp.name = val)), 
-                              const SizedBox(width: 8), 
-                              // FIX: Max Marks defaults to blank just like passing marks
-                              SizedBox(width: 60, child: TextFormField(initialValue: comp.maxMarks > 0 ? comp.maxMarks.toString() : "", decoration: const InputDecoration(hintText: '0', isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), keyboardType: TextInputType.number, textAlign: TextAlign.center, onChanged: (val) { setState(() { comp.maxMarks = double.tryParse(val) ?? 0.0; sub.recalculateMaxMarks(); }); })), 
-                              const SizedBox(width: 8), 
-                              SizedBox(width: 60, child: TextFormField(initialValue: comp.passingMarks > 0 ? comp.passingMarks.toString() : "", decoration: const InputDecoration(hintText: '0', isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), keyboardType: TextInputType.number, textAlign: TextAlign.center, onChanged: (val) => comp.passingMarks = double.tryParse(val) ?? 0.0)), 
-                              SizedBox(width: 40, child: IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20), onPressed: () => _removeComponent(index, cIdx), padding: EdgeInsets.zero, constraints: const BoxConstraints())) 
-                            ])
+                            child: Row(children: [ Expanded(child: TextFormField(initialValue: comp.name, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), onChanged: (val) => comp.name = val)), const SizedBox(width: 8), SizedBox(width: 60, child: TextFormField(initialValue: comp.maxMarks > 0 ? comp.maxMarks.toString() : "", decoration: const InputDecoration(hintText: '0', isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), keyboardType: TextInputType.number, textAlign: TextAlign.center, onChanged: (val) { setState(() { comp.maxMarks = double.tryParse(val) ?? 0.0; sub.recalculateMaxMarks(); }); })), const SizedBox(width: 8), SizedBox(width: 60, child: TextFormField(initialValue: comp.passingMarks > 0 ? comp.passingMarks.toString() : "", decoration: const InputDecoration(hintText: '0', isDense: true, contentPadding: EdgeInsets.only(bottom: 4)), keyboardType: TextInputType.number, textAlign: TextAlign.center, onChanged: (val) => comp.passingMarks = double.tryParse(val) ?? 0.0)), SizedBox(width: 40, child: IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 20), onPressed: () => _removeComponent(index, cIdx), padding: EdgeInsets.zero, constraints: const BoxConstraints())) ])
                           );
                         }),
                       ],
@@ -112,9 +89,10 @@ class _SetupWizardWidgetState extends State<SetupWizardWidget> {
           ),
         ),
         Padding(padding: const EdgeInsets.all(12.0), child: Row(children: [ Expanded(child: OutlinedButton.icon(style: OutlinedButton.styleFrom(side: BorderSide(color: Theme.of(context).colorScheme.primary), padding: const EdgeInsets.symmetric(vertical: 12), foregroundColor: Theme.of(context).colorScheme.primary), onPressed: _addSubject, icon: const Icon(Icons.add), label: const Text('Add Subject'))), const SizedBox(width: 12), 
-        // FIX: Validation error if subject name is blank
         Expanded(child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)), onPressed: () {
-          if (_subjects.any((s) => s.name.trim().isEmpty)) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter Subject Name', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.red)); return; }
+          if (_subjects.any((s) => s.name.trim().isEmpty)) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Please enter a Subject Name', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.red)); return; }
+          bool hasDuplicates = _subjects.map((e) => e.name.trim().toLowerCase()).toSet().length != _subjects.length;
+          if (hasDuplicates) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error: Subject names must be unique!', style: TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.red)); return; }
           widget.onSetupComplete("Global", _subjects);
         }, icon: const Icon(Icons.save), label: const Text('Save Setup'))), ]))
       ],
