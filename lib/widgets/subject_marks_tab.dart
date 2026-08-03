@@ -22,24 +22,16 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
   final ScrollController _horizontalScroll2 = ScrollController();
   final ScrollController _verticalScroll = ScrollController();
 
-  // New UI State Variables
   bool _isStatsExpanded = true;
   bool _isTopVisible = true;
 
   @override
   void initState() {
     super.initState();
-    // Horizontal Sync
     _horizontalScroll1.addListener(() { if (_horizontalScroll2.hasClients && _horizontalScroll2.offset != _horizontalScroll1.offset) { _horizontalScroll2.jumpTo(_horizontalScroll1.offset); } });
     _horizontalScroll2.addListener(() { if (_horizontalScroll1.hasClients && _horizontalScroll1.offset != _horizontalScroll2.offset) { _horizontalScroll1.jumpTo(_horizontalScroll2.offset); } });
-    
-    // Vertical Auto-Hide Logic
     _verticalScroll.addListener(() {
-      if (_verticalScroll.offset > 20 && _isTopVisible) {
-        setState(() => _isTopVisible = false);
-      } else if (_verticalScroll.offset <= 20 && !_isTopVisible) {
-        setState(() => _isTopVisible = true);
-      }
+      if (_verticalScroll.offset > 20 && _isTopVisible) { setState(() => _isTopVisible = false); } else if (_verticalScroll.offset <= 20 && !_isTopVisible) { setState(() => _isTopVisible = true); }
     });
   }
 
@@ -59,7 +51,6 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
 
   void _showValidationError(double maxAllowed) { ScaffoldMessenger.of(context).clearSnackBars(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: Marks cannot exceed $maxAllowed', style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.red)); }
 
-  // EXPANDED STAT CARD
   Widget _buildExpandedStatCard(String title, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
@@ -76,7 +67,6 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
     );
   }
 
-  // COLLAPSED STAT PILL
   Widget _buildCollapsedStatPill(String title, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
@@ -84,11 +74,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
         decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: color.withOpacity(0.3))),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 14),
-            const SizedBox(width: 4),
-            Text(title.isNotEmpty ? "$title $value" : value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
-          ],
+          children: [ Icon(icon, color: color, size: 14), const SizedBox(width: 4), Text(title.isNotEmpty ? "$title $value" : value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)), ],
         )
       ),
     );
@@ -124,11 +110,12 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
     }
     double qi = enteredCount > 0 ? (sumMarks / enteredCount) : 0.0;
     bool allEntered = enteredCount == totalStudents && totalStudents > 0;
+    Color counterColor = allEntered ? Colors.green : Colors.red;
 
     List<Widget> rightHeaders = [];
     if (currentSub.components.isEmpty) { rightHeaders.add(_buildCell(Text('Marks\n(Max: ${currentSub.maxMarks.toStringAsFixed(0)})', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: const Color(0xFFE0F2F1), isHeader: true)); } 
     else { for (var c in currentSub.components) { rightHeaders.add(_buildCell(Text('${c.name}\n(Max: ${c.maxMarks.toStringAsFixed(0)})', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: const Color(0xFFE0F2F1), isHeader: true)); } }
-    rightHeaders.add(_buildCell(const Text('Promote', style: TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: const Color(0xFFE0F2F1), isHeader: true));
+    rightHeaders.add(_buildCell(const Text('Promote', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true));
 
     List<Widget> leftBodyRows = []; List<Widget> rightBodyRows = [];
     for (int i = 0; i < filteredStudents.length; i++) {
@@ -142,7 +129,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
 
       leftBodyRows.add(Row(children: [
         _buildCell(Text(student.rollNo, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)), 60, bgColor: rowColor),
-        _buildCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, maxLines: 2, overflow: TextOverflow.ellipsis, softWrap: true), 140, bgColor: rowColor),
+        _buildCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, maxLines: 2, overflow: TextOverflow.ellipsis, softWrap: true), 160, bgColor: rowColor),
       ]));
 
       List<Widget> rRow = [];
@@ -153,9 +140,9 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
       if (currentSub.components.isEmpty) { final fieldKey = '${student.rollNo}_${currentSub.name}'; _inputKeysOrder.add(fieldKey); rRow.add(_buildCell(buildInput(fieldKey, currentSub.maxMarks), 80, bgColor: rowColor)); } 
       else { for (var c in currentSub.components) { String markKey = '${currentSub.name}_${c.name}'; final fieldKey = '${student.rollNo}_$markKey'; _inputKeysOrder.add(fieldKey); rRow.add(_buildCell(buildInput(fieldKey, c.maxMarks), 80, bgColor: rowColor)); } }
 
-      if (!currentSub.includeInPassFail || !student.isSubjectAttempted(widget.termId, currentSub)) { rRow.add(_buildCell(const Text("-"), 80, bgColor: rowColor)); } 
-      else if (naturallyPassed) { rRow.add(_buildCell(const Icon(Icons.check_circle, color: Colors.green, size: 20), 80, bgColor: rowColor)); } 
-      else { rRow.add(_buildCell(IconButton(icon: Icon(isPromoted ? Icons.star : Icons.star_border, color: isPromoted ? Colors.amber : Colors.grey), onPressed: () async { bool newVal = !isPromoted; student.termPromotions[widget.termId] ??= {}; student.termPromotions[widget.termId]![currentSub.name] = newVal; await DatabaseHelper.instance.toggleSubjectPromotion(widget.termId, student.rollNo, currentSub.name, newVal); setState(() {}); }), 80, bgColor: rowColor)); }
+      if (!currentSub.includeInPassFail || !student.isSubjectAttempted(widget.termId, currentSub)) { rRow.add(_buildCell(const Text("-"), 60, bgColor: rowColor)); } 
+      else if (naturallyPassed) { rRow.add(_buildCell(const Icon(Icons.check_circle, color: Colors.green, size: 20), 60, bgColor: rowColor)); } 
+      else { rRow.add(_buildCell(IconButton(icon: Icon(isPromoted ? Icons.star : Icons.star_border, color: isPromoted ? Colors.amber : Colors.grey), onPressed: () async { bool newVal = !isPromoted; student.termPromotions[widget.termId] ??= {}; student.termPromotions[widget.termId]![currentSub.name] = newVal; await DatabaseHelper.instance.toggleSubjectPromotion(widget.termId, student.rollNo, currentSub.name, newVal); setState(() {}); }), 60, bgColor: rowColor)); }
       rightBodyRows.add(Row(children: rRow));
     }
 
@@ -168,19 +155,18 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
       ),
       body: Column(
         children: [
-          // AUTO-HIDING TOP SECTION (Search + Chips)
           AnimatedSize(
             duration: const Duration(milliseconds: 250), curve: Curves.easeInOut,
             child: _isTopVisible ? Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: SizedBox(
-                    height: 45,
-                    child: TextField(
-                      decoration: InputDecoration(hintText: 'Search students...', prefixIcon: const Icon(Icons.search, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(horizontal: 16), filled: true, fillColor: Colors.grey.shade50, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide(color: Colors.grey.shade300)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide(color: Colors.grey.shade300))),
-                      onChanged: (val) => setState(() => _searchQuery = val)
-                    )
+                  child: Row(
+                    children: [
+                      Expanded(child: SizedBox(height: 45, child: TextField(decoration: InputDecoration(hintText: 'Search students...', prefixIcon: const Icon(Icons.search, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(horizontal: 16), filled: true, fillColor: Colors.grey.shade50, border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide(color: Colors.grey.shade300)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide(color: Colors.grey.shade300))), onChanged: (val) => setState(() => _searchQuery = val)))),
+                      const SizedBox(width: 12),
+                      const Text("Tip: Enter 999 for Absent", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold))
+                    ],
                   )
                 ),
                 Padding(
@@ -199,7 +185,6 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
             ) : const SizedBox(width: double.infinity),
           ),
           
-          // COLLAPSIBLE STATS HEADER
           GestureDetector(
             onTap: () => setState(() => _isStatsExpanded = !_isStatsExpanded),
             child: Container(
@@ -210,35 +195,18 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(children: [
-                        const Icon(Icons.bookmark, color: Color(0xFF00897B), size: 20), const SizedBox(width: 8), 
-                        Text(_isStatsExpanded ? 'Subject: ${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})' : '${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))
-                      ]),
-                      Row(children: [
-                        Text('Entered: $enteredCount / $totalStudents', style: TextStyle(fontWeight: FontWeight.bold, color: allEntered ? Colors.green : const Color(0xFF00897B), fontSize: 13)),
-                        const SizedBox(width: 8),
-                        Icon(_isStatsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.grey.shade600)
-                      ])
+                      Row(children: [ const Icon(Icons.bookmark, color: Color(0xFF00897B), size: 20), const SizedBox(width: 8), Text(_isStatsExpanded ? 'Subject: ${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})' : '${currentSub.name} (Max: ${currentSub.maxMarks.toStringAsFixed(0)})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)) ]),
+                      Row(children: [ Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: counterColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Text('Entered: $enteredCount / $totalStudents', style: TextStyle(fontWeight: FontWeight.bold, color: counterColor, fontSize: 13))), const SizedBox(width: 8), Icon(_isStatsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.grey.shade600) ])
                     ],
                   ),
                   AnimatedCrossFade(
                     firstChild: Padding(
                       padding: const EdgeInsets.only(top: 12.0),
-                      child: Row(children: [
-                        _buildExpandedStatCard("Passed", passedCount.toString(), Icons.check, Colors.green),
-                        _buildExpandedStatCard("Failed", failedCount.toString(), Icons.close, Colors.redAccent),
-                        _buildExpandedStatCard("QI", qi.toStringAsFixed(2), Icons.bar_chart, Colors.blue),
-                        _buildExpandedStatCard("Distt", disttCount.toString(), Icons.pie_chart, Colors.purple),
-                      ]),
+                      child: Row(children: [ _buildExpandedStatCard("Passed", passedCount.toString(), Icons.check, Colors.green), _buildExpandedStatCard("Failed", failedCount.toString(), Icons.close, Colors.redAccent), _buildExpandedStatCard("QI", qi.toStringAsFixed(2), Icons.bar_chart, Colors.blue), _buildExpandedStatCard("Distt", disttCount.toString(), Icons.pie_chart, Colors.purple), ]),
                     ),
                     secondChild: Padding(
                       padding: const EdgeInsets.only(top: 12.0),
-                      child: Row(children: [
-                        _buildCollapsedStatPill("", passedCount.toString(), Icons.check, Colors.green),
-                        _buildCollapsedStatPill("", failedCount.toString(), Icons.close, Colors.redAccent),
-                        _buildCollapsedStatPill("QI", qi.toStringAsFixed(2), Icons.bar_chart, Colors.blue),
-                        _buildCollapsedStatPill("Distt", disttCount.toString(), Icons.pie_chart, Colors.purple),
-                      ]),
+                      child: Row(children: [ _buildCollapsedStatPill("", passedCount.toString(), Icons.check, Colors.green), _buildCollapsedStatPill("", failedCount.toString(), Icons.close, Colors.redAccent), _buildCollapsedStatPill("QI", qi.toStringAsFixed(2), Icons.bar_chart, Colors.blue), _buildCollapsedStatPill("Distt", disttCount.toString(), Icons.pie_chart, Colors.purple), ]),
                     ),
                     crossFadeState: _isStatsExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
                     duration: const Duration(milliseconds: 300),
@@ -248,19 +216,18 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
             ),
           ),
 
-          // 2D TABLE GRID
           Expanded(
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)), clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [
                   Row(children: [
-                    Row(children: [_buildCell(const Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('Name', style: TextStyle(fontWeight: FontWeight.bold)), 140, bgColor: const Color(0xFFE0F2F1), isHeader: true)]),
+                    Row(children: [_buildCell(const Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('Name', style: TextStyle(fontWeight: FontWeight.bold)), 160, bgColor: const Color(0xFFE0F2F1), isHeader: true)]),
                     Expanded(child: SingleChildScrollView(controller: _horizontalScroll1, scrollDirection: Axis.horizontal, child: Row(children: rightHeaders))),
                   ]),
                   Expanded(
                     child: SingleChildScrollView(
-                      controller: _verticalScroll, // Connects to the Auto-Hide listener
+                      controller: _verticalScroll, 
                       scrollDirection: Axis.vertical,
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,7 +242,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
               )
             ),
           ),
-          const SizedBox(height: 80), // Spacer for FAB
+          const SizedBox(height: 80),
         ],
       ),
     );
