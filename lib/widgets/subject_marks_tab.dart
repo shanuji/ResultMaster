@@ -82,7 +82,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
 
   Widget _buildCell(Widget child, double width, {Color? bgColor, bool isHeader = false}) {
     return Container(
-      width: width, height: 60, padding: const EdgeInsets.symmetric(horizontal: 6), alignment: Alignment.center,
+      width: width, height: 60, padding: const EdgeInsets.symmetric(horizontal: 4), alignment: Alignment.center,
       decoration: BoxDecoration(color: bgColor ?? Colors.white, border: Border(bottom: BorderSide(color: Colors.grey.shade300), right: BorderSide(color: Colors.grey.shade300), top: isHeader ? BorderSide(color: Colors.grey.shade300) : BorderSide.none)),
       child: child,
     );
@@ -115,7 +115,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
     List<Widget> rightHeaders = [];
     if (currentSub.components.isEmpty) { rightHeaders.add(_buildCell(Text('Marks\n(Max: ${currentSub.maxMarks.toStringAsFixed(0)})', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: const Color(0xFFE0F2F1), isHeader: true)); } 
     else { for (var c in currentSub.components) { rightHeaders.add(_buildCell(Text('${c.name}\n(Max: ${c.maxMarks.toStringAsFixed(0)})', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: const Color(0xFFE0F2F1), isHeader: true)); } }
-    rightHeaders.add(_buildCell(const Text('Promote', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true));
+    rightHeaders.add(_buildCell(const Text('Promo', style: TextStyle(fontWeight: FontWeight.bold)), 55, bgColor: const Color(0xFFE0F2F1), isHeader: true));
 
     List<Widget> leftBodyRows = []; List<Widget> rightBodyRows = [];
     for (int i = 0; i < filteredStudents.length; i++) {
@@ -129,7 +129,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
 
       leftBodyRows.add(Row(children: [
         _buildCell(Text(student.rollNo, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)), 60, bgColor: rowColor),
-        _buildCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, maxLines: 2, overflow: TextOverflow.ellipsis, softWrap: true), 160, bgColor: rowColor),
+        _buildCell(Text(student.name.isEmpty ? 'Student ${student.rollNo}' : student.name, maxLines: 2, overflow: TextOverflow.ellipsis, softWrap: true), 190, bgColor: rowColor), // WIDENED
       ]));
 
       List<Widget> rRow = [];
@@ -140,14 +140,15 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
       if (currentSub.components.isEmpty) { final fieldKey = '${student.rollNo}_${currentSub.name}'; _inputKeysOrder.add(fieldKey); rRow.add(_buildCell(buildInput(fieldKey, currentSub.maxMarks), 80, bgColor: rowColor)); } 
       else { for (var c in currentSub.components) { String markKey = '${currentSub.name}_${c.name}'; final fieldKey = '${student.rollNo}_$markKey'; _inputKeysOrder.add(fieldKey); rRow.add(_buildCell(buildInput(fieldKey, c.maxMarks), 80, bgColor: rowColor)); } }
 
-      if (!currentSub.includeInPassFail || !student.isSubjectAttempted(widget.termId, currentSub)) { rRow.add(_buildCell(const Text("-"), 60, bgColor: rowColor)); } 
-      else if (naturallyPassed) { rRow.add(_buildCell(const Icon(Icons.check_circle, color: Colors.green, size: 20), 60, bgColor: rowColor)); } 
-      else { rRow.add(_buildCell(IconButton(icon: Icon(isPromoted ? Icons.star : Icons.star_border, color: isPromoted ? Colors.amber : Colors.grey), onPressed: () async { bool newVal = !isPromoted; student.termPromotions[widget.termId] ??= {}; student.termPromotions[widget.termId]![currentSub.name] = newVal; await DatabaseHelper.instance.toggleSubjectPromotion(widget.termId, student.rollNo, currentSub.name, newVal); setState(() {}); }), 60, bgColor: rowColor)); }
+      if (!currentSub.includeInPassFail || !student.isSubjectAttempted(widget.termId, currentSub)) { rRow.add(_buildCell(const Text("-"), 55, bgColor: rowColor)); } 
+      else if (naturallyPassed) { rRow.add(_buildCell(const Icon(Icons.check_circle, color: Colors.green, size: 20), 55, bgColor: rowColor)); } 
+      else { rRow.add(_buildCell(IconButton(icon: Icon(isPromoted ? Icons.star : Icons.star_border, color: isPromoted ? Colors.amber : Colors.grey), onPressed: () async { bool newVal = !isPromoted; student.termPromotions[widget.termId] ??= {}; student.termPromotions[widget.termId]![currentSub.name] = newVal; await DatabaseHelper.instance.toggleSubjectPromotion(widget.termId, student.rollNo, currentSub.name, newVal); setState(() {}); }), 55, bgColor: rowColor)); }
       rightBodyRows.add(Row(children: rRow));
     }
 
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false, // PREVENTS OVERFLOW
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: Colors.blue.shade600, foregroundColor: Colors.white,
         icon: const Icon(Icons.save), label: const Text("Save", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -222,7 +223,7 @@ class _SubjectMarksTabWidgetState extends State<SubjectMarksTabWidget> {
               child: Column(
                 children: [
                   Row(children: [
-                    Row(children: [_buildCell(const Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('Name', style: TextStyle(fontWeight: FontWeight.bold)), 160, bgColor: const Color(0xFFE0F2F1), isHeader: true)]),
+                    Row(children: [_buildCell(const Text('Roll No', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('Name', style: TextStyle(fontWeight: FontWeight.bold)), 190, bgColor: const Color(0xFFE0F2F1), isHeader: true)]),
                     Expanded(child: SingleChildScrollView(controller: _horizontalScroll1, scrollDirection: Axis.horizontal, child: Row(children: rightHeaders))),
                   ]),
                   Expanded(
