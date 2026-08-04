@@ -80,7 +80,7 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
     for (var sub in widget.subjects) { sHeaders.add(_buildCell(Text(sub.name.isEmpty ? 'Unnamed' : sub.name, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 70, bgColor: const Color(0xFFE0F2F1), isHeader: true)); }
     sHeaders.add(_buildCell(buildSortHeader('Total', 'total'), 80, bgColor: const Color(0xFFE0F2F1), isHeader: true));
     sHeaders.add(_buildCell(buildSortHeader('%', 'pct'), 70, bgColor: const Color(0xFFE0F2F1), isHeader: true));
-    sHeaders.add(_buildCell(const Text('Result', style: TextStyle(fontWeight: FontWeight.bold)), 80, bgColor: const Color(0xFFE0F2F1), isHeader: true));
+    sHeaders.add(_buildCell(const Text('Result', style: TextStyle(fontWeight: FontWeight.bold)), 65, bgColor: const Color(0xFFE0F2F1), isHeader: true)); // SHRUNK
 
     List<Widget> fBody = []; List<Widget> sBody = [];
 
@@ -122,7 +122,7 @@ class _FinalSheetTabWidgetState extends State<FinalSheetTabWidget> {
       bool hasSubjectPromotion = student.termPromotions[widget.termId]?.values.contains(true) ?? false;
       String statusText = hasSubjectPromotion ? 'PROMOTED' : (naturallyFailed ? 'FAIL' : 'PASS');
       Color statusColor = hasSubjectPromotion ? Colors.orange : (naturallyFailed ? Colors.red : Colors.green);
-      sCells.add(_buildCell(Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)), 80, bgColor: rowColor));
+      sCells.add(_buildCell(Text(statusText, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11)), 65, bgColor: rowColor));
 
       if (fCells.isNotEmpty) fBody.add(Row(children: fCells));
       sBody.add(Row(children: sCells));
