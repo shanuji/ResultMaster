@@ -103,8 +103,8 @@ class _SummarySheetTabWidgetState extends State<SummarySheetTabWidget> {
       
       leftBody.add(_buildCell(Text(sub.name, style: const TextStyle(fontWeight: FontWeight.bold)), 140, bgColor: rowColor));
       rightBody.add(Row(children: [
-        _buildCell(Text(appeared.toString()), 60, bgColor: rowColor), _buildCell(Text(passed.toString()), 60, bgColor: rowColor), _buildCell(Text('${passPct.toStringAsFixed(2)}%'), 75, bgColor: rowColor), _buildCell(Text(distinction.toString()), 60, bgColor: rowColor), _buildCell(Text(qi.toStringAsFixed(2)), 60, bgColor: rowColor),
-        ...distribution.values.map((v) => _buildCell(Text(v.toString()), 60, bgColor: rowColor)).toList()
+        _buildCell(Text(appeared.toString(), textAlign: TextAlign.center), 60, bgColor: rowColor), _buildCell(Text(passed.toString(), textAlign: TextAlign.center), 60, bgColor: rowColor), _buildCell(Text('${passPct.toStringAsFixed(2)}%', textAlign: TextAlign.center), 75, bgColor: rowColor), _buildCell(Text(distinction.toString(), textAlign: TextAlign.center), 60, bgColor: rowColor), _buildCell(Text(qi.toStringAsFixed(2), textAlign: TextAlign.center), 60, bgColor: rowColor),
+        ...distribution.values.map((v) => _buildCell(Text(v.toString(), textAlign: TextAlign.center), 65, bgColor: rowColor)).toList() // WIDENED TO 65px
       ]));
     }
 
@@ -113,8 +113,8 @@ class _SummarySheetTabWidgetState extends State<SummarySheetTabWidget> {
 
     leftBody.add(_buildCell(const Text('SUM', style: TextStyle(fontWeight: FontWeight.bold)), 140, bgColor: Colors.teal.shade50));
     rightBody.add(Row(children: [
-      _buildCell(Text(grandAppeared.toString(), style: const TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: Colors.teal.shade50), _buildCell(Text(grandPassed.toString(), style: const TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: Colors.teal.shade50), _buildCell(const Text('-'), 75, bgColor: Colors.teal.shade50), _buildCell(Text(grandDistinction.toString(), style: const TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: Colors.teal.shade50), _buildCell(const Text('-'), 60, bgColor: Colors.teal.shade50),
-      ...grandBrackets.values.map((v) => _buildCell(Text(v.toString()), 60, bgColor: Colors.teal.shade50)).toList()
+      _buildCell(Text(grandAppeared.toString(), style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: Colors.teal.shade50), _buildCell(Text(grandPassed.toString(), style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: Colors.teal.shade50), _buildCell(const Text('-', textAlign: TextAlign.center), 75, bgColor: Colors.teal.shade50), _buildCell(Text(grandDistinction.toString(), style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: Colors.teal.shade50), _buildCell(const Text('-', textAlign: TextAlign.center), 60, bgColor: Colors.teal.shade50),
+      ...grandBrackets.values.map((v) => _buildCell(Text(v.toString(), textAlign: TextAlign.center), 65, bgColor: Colors.teal.shade50)).toList()
     ]));
     
     return Column(
@@ -175,8 +175,8 @@ class _SummarySheetTabWidgetState extends State<SummarySheetTabWidget> {
                 Row(children: [
                   _buildCell(const Text('SUBJECT', style: TextStyle(fontWeight: FontWeight.bold)), 140, bgColor: const Color(0xFFE0F2F1), isHeader: true),
                   Expanded(child: SingleChildScrollView(controller: _horizontalScroll1, scrollDirection: Axis.horizontal, child: Row(children: [
-                    _buildCell(const Text('APP', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('PASS', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('PASS %', style: TextStyle(fontWeight: FontWeight.bold)), 75, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('DISTT', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('QI', style: TextStyle(fontWeight: FontWeight.bold)), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true),
-                    ...['0-20', '21-32.9', '33-40', '41-50', '51-59.9', '60', '61-70', '71-74.9', '75-80', '81-90', '90', '91-94.9', '95-100'].map((e) => _buildCell(Text(e, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true)).toList()
+                    _buildCell(const Text('APP', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('PASS', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('PASS %', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 75, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('DISTT', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true), _buildCell(const Text('QI', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.center), 60, bgColor: const Color(0xFFE0F2F1), isHeader: true),
+                    ...['0-20', '21-32.9', '33-40', '41-50', '51-59.9', '60', '61-70', '71-74.9', '75-80', '81-90', '90', '91-94.9', '95-100'].map((e) => _buildCell(Text(e, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), textAlign: TextAlign.center), 65, bgColor: const Color(0xFFE0F2F1), isHeader: true)).toList()
                   ]))),
                 ]),
                 Expanded(
