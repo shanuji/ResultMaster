@@ -1,12 +1,13 @@
-import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart' as p;
+import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/data_models.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+
   DatabaseHelper._init();
 
   Future<Database> get database async {
@@ -17,76 +18,324 @@ class DatabaseHelper {
 
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
-    final path = p.join(dbPath, filePath);
-    return await openDatabase(path, version: 4, onCreate: _createDB, onUpgrade: _upgradeDB);
+    final path = join(dbPath, filePath);
+
+    return await openDatabase(
+      path,
+      version: 3,
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
-  Future _createDB(Database db, int version) async {
-    await db.execute('CREATE TABLE workbooks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created_at TEXT NOT NULL)');
-    await db.execute('CREATE TABLE terms (id INTEGER PRIMARY KEY AUTOINCREMENT, workbook_id INTEGER NOT NULL, name TEXT NOT NULL, FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE)');
-    await db.execute('''CREATE TABLE subjects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, workbook_id INTEGER NOT NULL, name TEXT NOT NULL,
-        max_marks REAL NOT NULL, passing_marks REAL NOT NULL, include_in_pass_fail INTEGER NOT NULL,
-        theme_color INTEGER NOT NULL, components_json TEXT, require_pass_per_component INTEGER DEFAULT 0,
-        FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE)''');
-    await db.execute('''CREATE TABLE students (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, workbook_id INTEGER NOT NULL, roll_no TEXT NOT NULL,
-        name TEXT NOT NULL, is_promoted_overall INTEGER DEFAULT 0,
-        FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE)''');
-    await db.execute('''CREATE TABLE student_marks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, term_id INTEGER NOT NULL, roll_no TEXT NOT NULL,
-        mark_key TEXT NOT NULL, mark_value TEXT NOT NULL, is_promoted INTEGER DEFAULT 0,
-        FOREIGN KEY (term_id) REFERENCES terms (id) ON DELETE CASCADE)''');
+  Future<void> _createDB(Database db, int version) async {
+    // 1. Workbooks
+    await db.execute('''
+      CREATE TABLE workbooks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    // 2. Terms
+    await db.execute('''
+      CREATE TABLE terms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workbook_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // 3. Students
+    await db.execute('''
+      CREATE TABLE students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workbook_id INTEGER NOT NULL,
+        roll_no TEXT NOT NULL,
+        name TEXT NOT NULL,
+        FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // 4. Subjects
+    await db.execute('''
+      CREATE TABLE subjects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workbook_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        max_marks REAL NOT NULL,
+        passing_marks REAL NOT NULL,
+        include_in_pass_fail INTEGER NOT NULL,
+        theme_color INTEGER NOT NULL,
+        FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // 5. Subject Components
+    await db.execute('''
+      CREATE TABLE subject_components (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        max_marks REAL NOT NULL,
+        passing_marks REAL NOT NULL,
+        FOREIGN KEY (subject_id) REFERENCES subjects (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // 6. Unified Term-Aware Workbook Marks (UPSERT target)
+    await db.execute('''
+      CREATE TABLE workbook_marks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workbook_id INTEGER NOT NULL,
+        term_id INTEGER NOT NULL,
+        student_id TEXT NOT NULL,
+        component_id TEXT NOT NULL,
+        marks TEXT NOT NULL,
+        UNIQUE(workbook_id, term_id, student_id, component_id)
+      )
+    ''');
+
+    // 7. Term Promotions
+    await db.execute('''
+      CREATE TABLE term_promotions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        term_id INTEGER NOT NULL,
+        roll_no TEXT NOT NULL,
+        subject_name TEXT NOT NULL,
+        is_promoted INTEGER NOT NULL,
+        FOREIGN KEY (term_id) REFERENCES terms (id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // 8. Overall Promotions
+    await db.execute('''
+      CREATE TABLE overall_promotions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workbook_id INTEGER NOT NULL,
+        roll_no TEXT NOT NULL,
+        is_promoted INTEGER NOT NULL,
+        FOREIGN KEY (workbook_id) REFERENCES workbooks (id) ON DELETE CASCADE
+      )
+    ''');
   }
 
-  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 4) {
-      await db.execute('DROP TABLE IF EXISTS student_marks'); await db.execute('DROP TABLE IF EXISTS students');
-      await db.execute('DROP TABLE IF EXISTS subjects'); await db.execute('DROP TABLE IF EXISTS terms');
-      await db.execute('DROP TABLE IF EXISTS workbooks'); await _createDB(db, newVersion);
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    // Transactional safe upgrade path
+    if (oldVersion < 3) {
+      // Ensure backup or schema evolution rules apply here
+      await db.execute('CREATE TABLE IF NOT EXISTS workbook_marks (id INTEGER PRIMARY KEY AUTOINCREMENT, workbook_id INTEGER NOT NULL, term_id INTEGER NOT NULL, student_id TEXT NOT NULL, component_id TEXT NOT NULL, marks TEXT NOT NULL, UNIQUE(workbook_id, term_id, student_id, component_id))');
     }
   }
 
-  Future<List<Map<String, dynamic>>> fetchAllWorkbooks() async { final db = await instance.database; return await db.query('workbooks', orderBy: 'id DESC'); }
-  Future<int> createWorkbook(String title) async { final db = await instance.database; return await db.insert('workbooks', {'title': title.isEmpty ? 'Untitled' : title, 'created_at': DateTime.now().toIso8601String()}); }
-  Future<void> deleteWorkbook(int id) async { final db = await instance.database; await db.delete('workbooks', where: 'id = ?', whereArgs: [id]); }
-  Future<void> updateWorkbookTitle(int id, String newTitle) async { final db = await instance.database; await db.update('workbooks', {'title': newTitle}, where: 'id = ?', whereArgs: [id]); }
+  // Workbook Operations
+  Future<int> createWorkbook(String title) async {
+    final db = await database;
+    return await db.insert('workbooks', {'title': title, 'created_at': DateTime.now().toIso8601String()});
+  }
 
-  Future<void> insertLiveStudent(int workbookId, String rollNo, String name) async { final db = await instance.database; await db.insert('students', {'workbook_id': workbookId, 'roll_no': rollNo, 'name': name, 'is_promoted_overall': 0}); }
-  Future<void> deleteLiveStudent(int workbookId, String rollNo) async { final db = await instance.database; await db.delete('students', where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]); await db.rawDelete('DELETE FROM student_marks WHERE roll_no = ? AND term_id IN (SELECT id FROM terms WHERE workbook_id = ?)', [rollNo, workbookId]); }
-  Future<void> updateLiveStudentInfo(int workbookId, String oldRollNo, String newRollNo, String name) async { final db = await instance.database; await db.update('students', {'roll_no': newRollNo, 'name': name}, where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, oldRollNo]); if (oldRollNo != newRollNo) { await db.rawUpdate('UPDATE student_marks SET roll_no = ? WHERE roll_no = ? AND term_id IN (SELECT id FROM terms WHERE workbook_id = ?)', [newRollNo, oldRollNo, workbookId]); } }
-  Future<void> updateStudentOverallPromotion(int workbookId, String rollNo, bool isPromoted) async { final db = await instance.database; await db.update('students', {'is_promoted_overall': isPromoted ? 1 : 0}, where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]); }
+  Future<List<Map<String, dynamic>>> getWorkbooks() async {
+    final db = await database;
+    return await db.query('workbooks', orderBy: 'id DESC');
+  }
 
-  Future<int> createTerm(int workbookId, String termName) async { final db = await instance.database; return await db.insert('terms', {'workbook_id': workbookId, 'name': termName}); }
-  Future<void> deleteTerm(int termId) async { final db = await instance.database; await db.delete('terms', where: 'id = ?', whereArgs: [termId]); }
-  // NEW: Update Term Name
-  Future<void> updateTermName(int termId, String newName) async { final db = await instance.database; await db.update('terms', {'name': newName}, where: 'id = ?', whereArgs: [termId]); }
+  Future<void> updateWorkbookTitle(int workbookId, String newTitle) async {
+    final db = await database;
+    await db.update('workbooks', {'title': newTitle}, where: 'id = ?', whereArgs: [workbookId]);
+  }
 
-  Future<void> updateWorkbookSubjects(int workbookId, List<SubjectSetup> subjects) async { final db = await instance.database; await db.delete('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]); for (var sub in subjects) { List<Map<String, dynamic>> comps = sub.components.map((c) => {'name': c.name, 'maxMarks': c.maxMarks, 'passingMarks': c.passingMarks}).toList(); await db.insert('subjects', {'workbook_id': workbookId, 'name': sub.name, 'max_marks': sub.maxMarks, 'passing_marks': sub.passingMarks, 'include_in_pass_fail': sub.includeInPassFail ? 1 : 0, 'require_pass_per_component': 0, 'theme_color': sub.themeColor.value, 'components_json': jsonEncode(comps)}); } }
+  Future<void> deleteWorkbook(int workbookId) async {
+    final db = await database;
+    await db.delete('workbooks', where: 'id = ?', whereArgs: [workbookId]);
+  }
 
+  // Full Data Loader for Workbook Dashboard
   Future<Map<String, dynamic>> loadFullWorkbookData(int workbookId) async {
-    final db = await instance.database;
-    final subMaps = await db.query('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
-    List<SubjectSetup> subjects = subMaps.map((map) { var sub = SubjectSetup(id: map['id'] as int, workbookId: workbookId, name: map['name'] as String, maxMarks: map['max_marks'] as double, passingMarks: map['passing_marks'] as double, includeInPassFail: (map['include_in_pass_fail'] as int) == 1, themeColor: Color(map['theme_color'] as int)); if (map['components_json'] != null) { List dynamicList = jsonDecode(map['components_json'] as String); sub.components = dynamicList.map((c) => SubjectComponent(name: c['name'], maxMarks: (c['maxMarks'] as num).toDouble(), passingMarks: (c['passingMarks'] as num?)?.toDouble() ?? 0.0)).toList(); } return sub; }).toList();
-    final termMaps = await db.query('terms', where: 'workbook_id = ?', whereArgs: [workbookId]);
-    List<TermSetup> terms = termMaps.map((t) => TermSetup(id: t['id'] as int, workbookId: workbookId, name: t['name'] as String)).toList();
-    final studMaps = await db.query('students', where: 'workbook_id = ?', whereArgs: [workbookId], orderBy: 'CAST(roll_no AS INTEGER) ASC, roll_no ASC');
-    List<StudentRow> students = studMaps.map((map) => StudentRow(rollNo: map['roll_no'] as String, name: map['name'] as String, isPromotedOverall: (map['is_promoted_overall'] as int) == 1)).toList();
+    final db = await database;
 
-    for (var term in terms) {
-      final markMaps = await db.query('student_marks', where: 'term_id = ?', whereArgs: [term.id]);
-      for (var m in markMaps) {
-        String roll = m['roll_no'] as String; String key = m['mark_key'] as String;
-        var student = students.firstWhere((s) => s.rollNo == roll, orElse: () => StudentRow(rollNo: '', name: ''));
-        if (student.rollNo.isNotEmpty) {
-          if (!student.termMarks.containsKey(term.id)) { student.termMarks[term.id] = {}; student.termPromotions[term.id] = {}; }
-          student.termMarks[term.id]![key] = m['mark_value'] as String; student.termPromotions[term.id]![key] = (m['is_promoted'] as int) == 1;
+    // Load Terms
+    var termMaps = await db.query('terms', where: 'workbook_id = ?', whereArgs: [workbookId]);
+    List<TermSetup> terms = termMaps.map((t) => TermSetup(id: t['id'] as int, name: t['name'] as String)).toList();
+
+    // Load Subjects & Components
+    var subMaps = await db.query('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
+    List<SubjectSetup> subjects = [];
+    for (var s in subMaps) {
+      int subId = s['id'] as int;
+      var compMaps = await db.query('subject_components', where: 'subject_id = ?', whereArgs: [subId]);
+      List<SubjectComponent> comps = compMaps.map((c) => SubjectComponent(
+        name: c['name'] as String,
+        maxMarks: c['max_marks'] as double,
+        passingMarks: c['passing_marks'] as double,
+      )).toList();
+
+      subjects.add(SubjectSetup(
+        name: s['name'] as String,
+        maxMarks: s['max_marks'] as double,
+        passingMarks: s['passing_marks'] as double,
+        includeInPassFail: (s['include_in_pass_fail'] as int) == 1,
+        themeColor: Color(s['theme_color'] as int),
+        components: comps,
+      ));
+    }
+
+    // Load Students & Marks
+    var studMaps = await db.query('students', where: 'workbook_id = ?', whereArgs: [workbookId]);
+    List<StudentRow> students = [];
+
+    for (var st in studMaps) {
+      String rollNo = st['roll_no'] as String;
+      String name = st['name'] as String;
+
+      Map<int, Map<String, String>> termMarks = {};
+      Map<int, Map<String, bool>> termPromotions = {};
+      bool isPromotedOverall = false;
+
+      // Overall promotions check
+      var opMaps = await db.query('overall_promotions', where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
+      if (opMaps.isNotEmpty) {
+        isPromotedOverall = (opMaps.first['is_promoted'] as int) == 1;
+      }
+
+      for (var term in terms) {
+        termMarks[term.id] = {};
+        termPromotions[term.id] = {};
+
+        // Fetch marks from unified term-aware workbook_marks table
+        var markMaps = await db.query('workbook_marks', 
+          where: 'workbook_id = ? AND term_id = ? AND student_id = ?', 
+          whereArgs: [workbookId, term.id, rollNo]
+        );
+        for (var m in markMaps) {
+          termMarks[term.id]![m['component_id'] as String] = m['marks'] as String;
+        }
+
+        // Fetch term promotions
+        var promoMaps = await db.query('term_promotions', where: 'term_id = ? AND roll_no = ?', whereArgs: [term.id, rollNo]);
+        for (var p in promoMaps) {
+          termPromotions[term.id]![p['subject_name'] as String] = (p['is_promoted'] as int) == 1;
         }
       }
+
+      students.add(StudentRow(
+        rollNo: rollNo,
+        name: name,
+        termMarks: termMarks,
+        termPromotions: termPromotions,
+        isPromotedOverall: isPromotedOverall,
+      ));
     }
-    return {'terms': terms, 'students': students, 'subjects': subjects};
+
+    return {
+      'terms': terms,
+      'subjects': subjects,
+      'students': students,
+    };
   }
 
-  Future<void> saveLiveMark({required int termId, required String rollNo, required String markKey, required String value}) async { final db = await instance.database; await db.rawUpdate('UPDATE student_marks SET mark_value = ? WHERE term_id = ? AND roll_no = ? AND mark_key = ?', [value, termId, rollNo, markKey]); var changes = await db.rawQuery('SELECT changes() AS c'); if (changes.first['c'] == 0 && value.isNotEmpty) { await db.insert('student_marks', {'term_id': termId, 'roll_no': rollNo, 'mark_key': markKey, 'mark_value': value, 'is_promoted': 0}); } }
-  Future<void> toggleSubjectPromotion(int termId, String rollNo, String markKey, bool isPromoted) async { final db = await instance.database; await db.rawUpdate('UPDATE student_marks SET is_promoted = ? WHERE term_id = ? AND roll_no = ? AND mark_key = ?', [isPromoted ? 1 : 0, termId, rollNo, markKey]); var changes = await db.rawQuery('SELECT changes() AS c'); if (changes.first['c'] == 0) { await db.insert('student_marks', {'term_id': termId, 'roll_no': rollNo, 'mark_key': markKey, 'mark_value': '', 'is_promoted': isPromoted ? 1 : 0}); } }
+  // Unified Term-Aware Mark Upsert (The Data-Entry backbone)
+  Future<void> saveTermMark({
+    required int workbookId,
+    required int termId,
+    required String rollNo,
+    required String componentId,
+    required String marks,
+  }) async {
+    final db = await database;
+    await db.rawInsert('''
+      INSERT INTO workbook_marks (workbook_id, term_id, student_id, component_id, marks)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(workbook_id, term_id, student_id, component_id) 
+      DO UPDATE SET marks = excluded.marks
+    ''', [workbookId, termId, rollNo, componentId, marks]);
+  }
+
+  // Term management
+  Future<int> createTerm(int workbookId, String name) async {
+    final db = await database;
+    return await db.insert('terms', {'workbook_id': workbookId, 'name': name});
+  }
+
+  Future<void> updateTermName(int termId, String newName) async {
+    final db = await database;
+    await db.update('terms', {'name': newName}, where: 'id = ?', whereArgs: [termId]);
+  }
+
+  Future<void> deleteTerm(int termId) async {
+    final db = await database;
+    await db.delete('terms', where: 'id = ?', whereArgs: [termId]);
+  }
+
+  // Student CRUD
+  Future<void> insertLiveStudent(int workbookId, String rollNo, String name) async {
+    final db = await database;
+    await db.insert('students', {'workbook_id': workbookId, 'roll_no': rollNo, 'name': name}, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> updateLiveStudentInfo(int workbookId, String oldRollNo, String newRollNo, String name) async {
+    final db = await database;
+    await db.update('students', {'roll_no': newRollNo, 'name': name}, where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, oldRollNo]);
+  }
+
+  Future<void> deleteLiveStudent(int workbookId, String rollNo) async {
+    final db = await database;
+    await db.delete('students', where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
+  }
+
+  // Subject Setup Configuration
+  Future<void> updateWorkbookSubjects(int workbookId, List<SubjectSetup> subjects) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // Clear old subjects and components for this workbook
+      var oldSubs = await txn.query('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
+      for (var sub in oldSubs) {
+        await txn.delete('subject_components', where: 'subject_id = ?', whereArgs: [sub['id']]);
+      }
+      await txn.delete('subjects', where: 'workbook_id = ?', whereArgs: [workbookId]);
+
+      // Insert new subjects & components
+      for (var sub in subjects) {
+        int subId = await txn.insert('subjects', {
+          'workbook_id': workbookId,
+          'name': sub.name,
+          'max_marks': sub.maxMarks,
+          'passing_marks': sub.passingMarks,
+          'include_in_pass_fail': sub.includeInPassFail ? 1 : 0,
+          'theme_color': sub.themeColor.value,
+        });
+
+        for (var comp in sub.components) {
+          await txn.insert('subject_components', {
+            'subject_id': subId,
+            'name': comp.name,
+            'max_marks': comp.maxMarks,
+            'passing_marks': comp.passingMarks,
+          });
+        }
+      }
+    });
+  }
+
+  // Promotion toggles
+  Future<void> toggleSubjectPromotion(int termId, String rollNo, String subjectName, bool isPromoted) async {
+    final db = await database;
+    var existing = await db.query('term_promotions', where: 'term_id = ? AND roll_no = ? AND subject_name = ?', whereArgs: [termId, rollNo, subjectName]);
+    if (existing.isNotEmpty) {
+      await db.update('term_promotions', {'is_promoted': isPromoted ? 1 : 0}, where: 'id = ?', whereArgs: [existing.first['id']]);
+    } else {
+      await db.insert('term_promotions', {'term_id': termId, 'roll_no': rollNo, 'subject_name': subjectName, 'is_promoted': isPromoted ? 1 : 0});
+    }
+  }
+
+  Future<void> updateStudentOverallPromotion(int workbookId, String rollNo, bool isPromoted) async {
+    final db = await database;
+    var existing = await db.query('overall_promotions', where: 'workbook_id = ? AND roll_no = ?', whereArgs: [workbookId, rollNo]);
+    if (existing.isNotEmpty) {
+      await db.update('overall_promotions', {'is_promoted': isPromoted ? 1 : 0}, where: 'id = ?', whereArgs: [existing.first['id']]);
+    } else {
+      await db.insert('overall_promotions', {'workbook_id': workbookId, 'roll_no': rollNo, 'is_promoted': isPromoted ? 1 : 0});
+    }
+  }
 }
