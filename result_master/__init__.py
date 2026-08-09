@@ -1,1 +1,0 @@
-"""ResultMaster application package."""
