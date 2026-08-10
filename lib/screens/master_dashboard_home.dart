@@ -1,9 +1,29 @@
 import 'package:flutter/material.dart';
 import '../features/result_workbook/data/repositories/sqlite_result_workbook_repository.dart';
 import '../features/result_workbook/presentation/pages/new_result_wizard_page.dart';
-// 👇 Here is the manually added import to fix the red line
-import '../features/result_workbook/domain/usecases/create_result_workbook.dart';
+// Importing the core interfaces needed for the usecase
+import '../features/result_workbook/domain/repositories/result_workbook_repository.dart';
+import '../features/result_workbook/domain/entities/result_workbook.dart';
 import 'workbook_dashboard_screen.dart';
+
+// 🎯 SILVER BULLET: We define the usecase directly inside this file.
+// This guarantees GitHub Actions cannot lose the class due to folder sync issues.
+class CreateResultWorkbook {
+  const CreateResultWorkbook(this.repository);
+  final ResultWorkbookRepository repository;
+
+  Future<CreatedWorkbook> call(ResultWorkbookDraft draft) {
+    if (draft.subjects.isEmpty) {
+      throw ArgumentError('At least one subject is required.');
+    }
+    for (final subject in draft.subjects) {
+      if (subject.components.isEmpty) {
+        throw ArgumentError('Each subject must have at least one component.');
+      }
+    }
+    return repository.createWorkbook(draft);
+  }
+}
 
 class MasterDashboardHome extends StatefulWidget {
   const MasterDashboardHome({Key? key}) : super(key: key);
