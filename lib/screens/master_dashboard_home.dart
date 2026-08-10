@@ -1,15 +1,8 @@
 import 'package:flutter/material.dart';
 import '../features/result_workbook/data/repositories/sqlite_result_workbook_repository.dart';
 import '../features/result_workbook/domain/usecases/create_result_workbook.dart';
-import '../features/result_workbook/domain/repositories/result_workbook_repository.dart';
 import '../features/result_workbook/presentation/pages/new_result_wizard_page.dart';
 import 'workbook_dashboard_screen.dart';
-
-// 🚨 TEMPORARY HACK: Tricking the compiler to bypass the architecture block 
-class DummyRepo implements ResultWorkbookRepository {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
 
 class MasterDashboardHome extends StatefulWidget {
   const MasterDashboardHome({Key? key}) : super(key: key);
@@ -31,6 +24,7 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
 
   Future<void> _loadWorkbooks() async {
     setState(() => _isLoading = true);
+    
     try {
       final data = await _repository.getAllWorkbooks(); 
       setState(() {
@@ -46,7 +40,10 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ResultMaster'), elevation: 0),
+      appBar: AppBar(
+        title: const Text('ResultMaster'),
+        elevation: 0,
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _workbooks.isEmpty
@@ -56,7 +53,10 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                     children: [
                       Icon(Icons.folder_open, size: 64, color: Colors.grey.shade400),
                       const SizedBox(height: 16),
-                      Text('No workbooks found', style: TextStyle(fontSize: 18, color: Colors.grey.shade600)),
+                      Text(
+                        'No workbooks found',
+                        style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+                      ),
                     ],
                   ),
                 )
@@ -65,8 +65,11 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                   padding: const EdgeInsets.all(8.0),
                   itemBuilder: (context, index) {
                     final workbook = _workbooks[index];
+                    
                     final int id = workbook is Map ? workbook['id'] : workbook.id;
-                    final String title = workbook is Map ? (workbook['name'] ?? 'Unnamed Workbook') : (workbook.name ?? 'Unnamed Workbook');
+                    final String title = workbook is Map 
+                        ? (workbook['name'] ?? 'Unnamed Workbook') 
+                        : (workbook.name ?? 'Unnamed Workbook');
                     
                     return Card(
                       elevation: 2,
@@ -77,12 +80,18 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                           backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
                           child: Icon(Icons.book, color: Theme.of(context).primaryColor),
                         ),
-                        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        title: Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                         onTap: () {
-                          Navigator.push(context, MaterialPageRoute(
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
                               builder: (context) => WorkbookDashboardScreen(workbookId: id),
-                          )).then((_) => _loadWorkbooks());
+                            ),
+                          ).then((_) => _loadWorkbooks());
                         },
                       ),
                     );
@@ -94,8 +103,8 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
             context,
             MaterialPageRoute(
               builder: (context) => NewResultWizardPage(
-                // Injecting the DummyRepo so the UI actually opens
-                createWorkbook: CreateResultWorkbook(DummyRepo()),
+                // The compiler will now accept this perfectly
+                createWorkbook: CreateResultWorkbook(_repository),
               ),
             ),
           ).then((_) => _loadWorkbooks());
