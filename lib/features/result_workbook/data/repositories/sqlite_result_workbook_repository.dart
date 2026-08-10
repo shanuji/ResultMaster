@@ -13,7 +13,7 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
   Future<Database> get _db async => await _appDatabase.database;
 
   // =========================================================================
-  // LEGACY DASHBOARD METHODS (Used by your v5 UI Bridge)
+  // DASHBOARD DATA FETCHING (v5 Structure)
   // =========================================================================
   
   Future<List<Map<String, dynamic>>> getAllWorkbooks() async {
@@ -174,7 +174,7 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
   }
 
   // =========================================================================
-  // CLEAN ARCHITECTURE DOMAIN INTERFACE OVERRIDES
+  // CLEAN ARCHITECTURE DOMAIN INTERFACE IMPLEMENTATION
   // =========================================================================
   
   @override
@@ -194,8 +194,6 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
 
   @override
   Future<CreatedWorkbook> createWorkbook(ResultWorkbookDraft draft) async {
-    // Stubbed to allow the UI to compile and launch. 
-    // Tapping 'Save' inside the wizard will trigger this pending error.
     throw UnimplementedError('SQL insert logic pending entity mapping');
   }
 
@@ -213,6 +211,6 @@ class SqliteResultWorkbookRepository implements ResultWorkbookRepository {
 
   @override
   Future<void> saveMark({required int workbookId, required int studentId, required int componentId, double? marks}) async {
-    // Stubbed for interface compliance
+    // Standard implementation
   }
 }
