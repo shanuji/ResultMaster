@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../features/result_workbook/data/repositories/sqlite_result_workbook_repository.dart';
 import '../features/result_workbook/presentation/pages/new_result_wizard_page.dart';
+// 👇 Here is the manually added import to fix the red line
+import '../features/result_workbook/domain/usecases/create_result_workbook.dart';
 import 'workbook_dashboard_screen.dart';
-
-// 🛑 WE REMOVED THE BROKEN IMPORT HERE SO VS CODE CAN FIND IT FOR YOU
 
 class MasterDashboardHome extends StatefulWidget {
   const MasterDashboardHome({Key? key}) : super(key: key);
@@ -90,7 +90,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
             context,
             MaterialPageRoute(
               builder: (context) => NewResultWizardPage(
-                // 👇 THIS WILL HAVE A RED SQUIGGLY LINE
                 createWorkbook: CreateResultWorkbook(_repository),
               ),
             ),
