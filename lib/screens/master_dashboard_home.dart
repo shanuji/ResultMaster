@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../features/result_workbook/data/repositories/sqlite_result_workbook_repository.dart';
 import 'workbook_dashboard_screen.dart';
+// Update this import path to match the exact location of your wizard page
+import '../features/result_workbook/presentation/pages/new_result_wizard_page.dart'; 
 
 class MasterDashboardHome extends StatefulWidget {
   const MasterDashboardHome({Key? key}) : super(key: key);
@@ -24,7 +26,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
     setState(() => _isLoading = true);
     
     try {
-      // Safely fetches data via the v5 repository contract instead of the legacy DatabaseHelper
       final data = await _repository.getAllWorkbooks(); 
       setState(() {
         _workbooks = data;
@@ -65,7 +66,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                   itemBuilder: (context, index) {
                     final workbook = _workbooks[index];
                     
-                    // Safely extracts the ID and Name whether the repo returns a Map or an Entity
                     final int id = workbook is Map ? workbook['id'] : workbook.id;
                     final String title = workbook is Map 
                         ? (workbook['name'] ?? 'Unnamed Workbook') 
@@ -99,8 +99,13 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
                 ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          // Navigates to the wizard and refreshes the list when returning
-          Navigator.pushNamed(context, '/new_workbook').then((_) => _loadWorkbooks());
+          // Navigates directly to the wizard page class instead of relying on string routes
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const NewResultWizardPage(), 
+            ),
+          ).then((_) => _loadWorkbooks());
         },
         icon: const Icon(Icons.add),
         label: const Text('New Workbook'),
