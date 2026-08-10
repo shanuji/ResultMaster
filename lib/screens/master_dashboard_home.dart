@@ -103,7 +103,6 @@ class _MasterDashboardHomeState extends State<MasterDashboardHome> {
             context,
             MaterialPageRoute(
               builder: (context) => NewResultWizardPage(
-                // The compiler will now accept this perfectly
                 createWorkbook: CreateResultWorkbook(_repository),
               ),
             ),
