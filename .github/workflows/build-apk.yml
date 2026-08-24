@@ -3,6 +3,8 @@ name: Build Android APK
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -32,6 +34,12 @@ jobs:
 
       - name: Fix Duplicate Icon Error
         run: find android/app/src/main/res -name "ic_launcher*.xml" -type f -delete
+
+      - name: Run Flutter Analyzer
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run Flutter Tests
+        run: flutter test
 
       - name: Build Test APK (Debug version for easy testing)
         run: flutter build apk --debug
