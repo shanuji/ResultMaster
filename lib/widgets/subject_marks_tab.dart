@@ -202,6 +202,7 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
                 ...widget.students.map((student) {
                   bool isAttempted = student.isSubjectAttempted(currentSub);
                   bool isPass = isAttempted && student.getSubjectScore(currentSub) >= currentSub.passingMarks;
+                  bool isPromoted = isAttempted && student.termPromotions[currentSub.name] == true;
 
                   List<Widget> rowCells = [
                     Padding(
@@ -229,8 +230,16 @@ class _SubjectMarksTabState extends State<SubjectMarksTab> {
                   // Promo Status Icon
                   rowCells.add(
                     Icon(
-                      isAttempted ? (isPass ? Icons.check_circle : Icons.star_border) : Icons.circle_outlined,
-                      color: isAttempted ? (isPass ? Colors.green : Colors.grey) : Colors.grey.shade300,
+                      isAttempted
+                          ? (isPromoted
+                              ? Icons.star
+                              : (isPass ? Icons.check_circle : Icons.star_border))
+                          : Icons.circle_outlined,
+                      color: isAttempted
+                          ? (isPromoted
+                              ? Colors.amber.shade700
+                              : (isPass ? Colors.green : Colors.red))
+                          : Colors.grey.shade300,
                       size: 28,
                     ),
                   );
